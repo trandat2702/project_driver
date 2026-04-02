@@ -1,0 +1,1 @@
+savedcmd_/home/dat/linux-driver-project/kernel_module/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/dat/linux-driver-project/kernel_module/Module.symvers -n -T /home/dat/linux-driver-project/kernel_module/modules.order -i Module.symvers -e 

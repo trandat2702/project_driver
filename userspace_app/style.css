@@ -1,0 +1,597 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   style.css – Student Manager Premium Theme v2
+   Aurora dark palette · Glassmorphism · Noto Sans · Micro-animations
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Reset & Window ───────────────────────────────────────────────────── */
+
+* {
+    -gtk-icon-shadow: none;
+    text-shadow: none;
+}
+
+window {
+    background-image:
+        radial-gradient(ellipse at 15% 10%,  rgba(99, 240, 200, 0.08), transparent 50%),
+        radial-gradient(ellipse at 85% 90%,  rgba(109, 44, 208, 0.12), transparent 50%),
+        radial-gradient(ellipse at 50% 50%,  rgba(18, 120, 255, 0.06), transparent 60%),
+        linear-gradient(155deg, #050a18, #0a1030 40%, #120828 70%, #0a0a20 100%);
+    color: #e0e8f8;
+    font-family: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+    font-size: 15px;
+}
+
+/* ── App shell (dashboard root) ───────────────────────────────────────── */
+
+#app-shell {
+    padding: 12px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LOGIN SCREEN
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.glass-card {
+    border-radius: 24px;
+    border: 1px solid rgba(99, 240, 200, 0.15);
+    box-shadow:
+        0 32px 64px rgba(0, 0, 0, 0.50),
+        0 8px 24px rgba(4, 8, 25, 0.40),
+        inset 0 1px 0 rgba(255,255,255,0.06),
+        inset 0 -1px 0 rgba(0,0,0,0.20);
+    padding: 40px 36px;
+    background-image: linear-gradient(
+        165deg,
+        rgba(16, 28, 72, 0.95),
+        rgba(10, 18, 50, 0.92) 60%,
+        rgba(8, 14, 38, 0.90)
+    );
+}
+
+.login-title {
+    font: 800 28px "Noto Sans";
+    color: #f0f6ff;
+    letter-spacing: 0.5px;
+}
+
+/* Login field labels */
+.glass-card label {
+    color: rgba(160, 185, 230, 0.80);
+    font: 700 13px "Noto Sans";
+    letter-spacing: 1.2px;
+}
+
+/* Inline error on the login card */
+/* Note: visibility and layout for #login-status is handled in C code */
+#login-status {
+    border-radius: 10px;
+    padding: 8px 14px;
+    border: 1px solid rgba(255, 90, 90, 0.35);
+    background-image: linear-gradient(90deg,
+        rgba(140, 30, 40, 0.30),
+        rgba(100, 20, 30, 0.25));
+    color: #ffb0b0;
+    font: 700 12px "Noto Sans";
+    margin-bottom: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TOPBAR
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#topbar {
+    border-radius: 14px;
+    padding: 10px 16px;
+    background-image: linear-gradient(
+        90deg,
+        rgba(14, 24, 60, 0.85),
+        rgba(10, 18, 48, 0.80)
+    );
+    border: 1px solid rgba(99, 240, 200, 0.12);
+    box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+    margin-bottom: 8px;
+}
+
+.topbar-title {
+    font: 700 16px "Noto Sans";
+    color: rgba(220, 232, 255, 0.90);
+    letter-spacing: 0.4px;
+}
+
+.chip {
+    border-radius: 20px;
+    padding: 4px 12px;
+    background-image: linear-gradient(
+        90deg,
+        rgba(99, 240, 200, 0.10),
+        rgba(48, 190, 248, 0.08)
+    );
+    border: 1px solid rgba(99, 240, 200, 0.25);
+    color: #9bf4dc;
+    font: 700 10px "Noto Sans";
+    letter-spacing: 0.4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PANEL CARD (wraps the table)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.panel-card {
+    border-radius: 16px;
+    padding: 14px;
+    background-image: linear-gradient(
+        175deg,
+        rgba(12, 22, 58, 0.80),
+        rgba(8, 14, 40, 0.75)
+    );
+    border: 1px solid rgba(130, 148, 218, 0.18);
+    box-shadow:
+        0 6px 24px rgba(0, 0, 0, 0.20),
+        inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.section-title {
+    font: 800 20px "Noto Sans";
+    color: #f0f4ff;
+    letter-spacing: 0.2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FORM CARD
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.form-card {
+    border-radius: 14px;
+    padding: 14px 16px;
+    background-image: linear-gradient(
+        175deg,
+        rgba(14, 24, 60, 0.75),
+        rgba(8, 16, 42, 0.70)
+    );
+    border: 1px solid rgba(120, 138, 206, 0.16);
+    box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+.form-section-label {
+    font: 700 12px "Noto Sans";
+    color: rgba(99, 240, 200, 0.65);
+    letter-spacing: 1.4px;
+    margin-bottom: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CONTROLS EXPANDER
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.controls-expander > title {
+    font: 700 14px "Noto Sans";
+    color: rgba(180, 200, 250, 0.85);
+    padding: 8px 6px;
+    border-radius: 10px;
+    border: none;
+    background: none;
+}
+
+expander > title {
+    font: 700 13px "Noto Sans";
+    color: rgba(170, 192, 248, 0.75);
+    padding: 6px 4px;
+    border: none;
+    background: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   INPUT FIELDS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+grid > label {
+    color: rgba(160, 185, 230, 0.80);
+    font: 700 12px "Noto Sans";
+    letter-spacing: 0.8px;
+    margin-bottom: 2px;
+}
+
+entry,
+textview,
+combobox box,
+combobox entry {
+    border-radius: 10px;
+    border: 1px solid rgba(99, 240, 200, 0.12);
+    background-color: rgba(6, 12, 35, 0.85);
+    color: #e8f0ff;
+    padding: 8px 12px;
+    font: 500 12px "Noto Sans";
+    caret-color: #63f0c8;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.20);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+entry:focus,
+textview:focus {
+    border-color: rgba(99, 240, 200, 0.50);
+    box-shadow:
+        inset 0 2px 4px rgba(0,0,0,0.20),
+        0 0 0 3px rgba(99, 240, 200, 0.08);
+}
+
+entry:insensitive {
+    background-color: rgba(6, 12, 35, 0.50);
+    color: rgba(160, 180, 220, 0.40);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   STATUS BAR
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#status-label {
+    border-radius: 12px;
+    padding: 8px 14px;
+    border: 1px solid rgba(99, 240, 200, 0.20);
+    background-image: linear-gradient(
+        90deg,
+        rgba(20, 60, 70, 0.35),
+        rgba(15, 80, 65, 0.25)
+    );
+    color: #b8f8e6;
+    font: 600 13px "Noto Sans";
+    letter-spacing: 0.2px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BUTTONS – Base
+   ═══════════════════════════════════════════════════════════════════════ */
+
+button {
+    border-radius: 10px;
+    border: 1px solid rgba(100, 124, 200, 0.22);
+    background-image: linear-gradient(
+        180deg,
+        rgba(24, 38, 88, 0.80),
+        rgba(16, 28, 66, 0.85)
+    );
+    color: #ccd8f0;
+    font: 600 12px "Noto Sans";
+    padding: 8px 16px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.20);
+    transition: all 150ms ease;
+}
+
+button:hover {
+    border-color: rgba(140, 166, 232, 0.40);
+    background-image: linear-gradient(
+        180deg,
+        rgba(36, 54, 112, 0.90),
+        rgba(24, 40, 88, 0.90)
+    );
+    color: #e8f0ff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.30);
+}
+
+button:active {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+/* ── Primary (Add / Search / Export) – Teal gradient ──────────────────── */
+
+.primary-btn {
+    border-color: rgba(99, 240, 200, 0.50);
+    background-image: linear-gradient(
+        135deg,
+        rgba(30, 190, 148, 0.92),
+        rgba(40, 170, 230, 0.88)
+    );
+    color: #022820;
+    font: 800 12px "Noto Sans";
+    padding: 8px 20px;
+    box-shadow:
+        0 3px 12px rgba(40, 200, 160, 0.25),
+        inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+.primary-btn:hover {
+    background-image: linear-gradient(
+        135deg,
+        rgba(45, 210, 168, 0.96),
+        rgba(55, 195, 248, 0.95)
+    );
+    border-color: rgba(99, 240, 200, 0.70);
+    box-shadow:
+        0 6px 20px rgba(40, 200, 160, 0.35),
+        inset 0 1px 0 rgba(255,255,255,0.15);
+}
+
+/* ── Secondary (Edit / Save / USB write) – Amber gradient ────────────── */
+
+.secondary-btn {
+    border-color: rgba(255, 195, 90, 0.50);
+    background-image: linear-gradient(
+        135deg,
+        rgba(255, 185, 70, 0.92),
+        rgba(255, 140, 80, 0.88)
+    );
+    color: #2c1000;
+    font: 800 12px "Noto Sans";
+    padding: 8px 20px;
+    box-shadow:
+        0 3px 12px rgba(255, 180, 60, 0.20),
+        inset 0 1px 0 rgba(255,255,255,0.15);
+}
+
+.secondary-btn:hover {
+    background-image: linear-gradient(
+        135deg,
+        rgba(255, 200, 90, 0.96),
+        rgba(255, 155, 95, 0.95)
+    );
+    border-color: rgba(255, 210, 100, 0.70);
+    box-shadow:
+        0 6px 20px rgba(255, 180, 60, 0.30),
+        inset 0 1px 0 rgba(255,255,255,0.18);
+}
+
+/* ── Danger (Delete / Logout) – Rose gradient ────────────────────────── */
+
+.danger-btn {
+    border-color: rgba(255, 80, 100, 0.45);
+    background-image: linear-gradient(
+        135deg,
+        rgba(210, 55, 75, 0.88),
+        rgba(170, 35, 60, 0.85)
+    );
+    color: #ffe8e8;
+    font: 800 12px "Noto Sans";
+    padding: 8px 20px;
+    box-shadow:
+        0 3px 12px rgba(200, 50, 70, 0.20),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.danger-btn:hover {
+    background-image: linear-gradient(
+        135deg,
+        rgba(235, 70, 90, 0.95),
+        rgba(195, 50, 72, 0.93)
+    );
+    border-color: rgba(255, 105, 120, 0.65);
+    color: #fff2f2;
+    box-shadow:
+        0 6px 20px rgba(200, 50, 70, 0.30),
+        inset 0 1px 0 rgba(255,255,255,0.10);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#sidebar {
+    min-width: 180px;
+    border-radius: 16px 0 0 16px;
+    padding: 18px 12px 14px;
+    background-image: linear-gradient(
+        180deg,
+        rgba(12, 22, 60, 0.95),
+        rgba(8, 16, 42, 0.92)
+    );
+    border: 1px solid rgba(99, 240, 200, 0.10);
+    border-right: 1px solid rgba(80, 110, 180, 0.15);
+    box-shadow:
+        4px 0 16px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.sidebar-brand {
+    font: 900 26px "Noto Sans";
+    color: #63f0c8;
+    letter-spacing: 4px;
+    margin-bottom: 0;
+}
+
+.sidebar-sub {
+    font: 500 12px "Noto Sans";
+    color: rgba(160, 185, 240, 0.55);
+    margin-bottom: 8px;
+    letter-spacing: 0.8px;
+}
+
+.nav-section-label {
+    font: 700 10px "Noto Sans";
+    color: rgba(99, 240, 200, 0.40);
+    letter-spacing: 2px;
+    margin: 6px 0 4px 4px;
+}
+
+separator {
+    background-color: rgba(99, 240, 200, 0.10);
+    min-height: 1px;
+    margin: 4px 0;
+}
+
+button.side-action {
+    border-radius: 10px;
+    border: 1px solid rgba(80, 110, 180, 0.15);
+    background-image: linear-gradient(
+        180deg,
+        rgba(20, 36, 80, 0.50),
+        rgba(14, 26, 60, 0.45)
+    );
+    color: #b8c8e8;
+    font: 600 13px "Noto Sans";
+    padding: 8px 12px;
+    margin-bottom: 2px;
+    box-shadow: none;
+    transition: all 150ms ease;
+}
+
+button.side-action:hover {
+    border-color: rgba(99, 240, 200, 0.35);
+    background-image: linear-gradient(
+        180deg,
+        rgba(30, 50, 100, 0.75),
+        rgba(20, 38, 80, 0.70)
+    );
+    color: #e8f4ff;
+    box-shadow: 0 2px 8px rgba(99, 240, 200, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CONTENT AREA
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#content {
+    border-radius: 0 16px 16px 0;
+    padding: 12px 14px;
+    background-image: linear-gradient(
+        165deg,
+        rgba(14, 22, 58, 0.55),
+        rgba(10, 16, 40, 0.50)
+    );
+    border: 1px solid rgba(130, 149, 211, 0.15);
+    border-left: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TREEVIEW (table)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+treeview,
+treeview.view {
+    background-color: rgba(8, 14, 42, 0.75);
+    color: #e0ecff;
+    font: 500 12px "Noto Sans";
+}
+
+treeview header button {
+    border: none;
+    border-radius: 0;
+    border-bottom: 2px solid rgba(99, 240, 200, 0.20);
+    background-image: linear-gradient(
+        180deg,
+        rgba(18, 32, 72, 0.95),
+        rgba(14, 26, 60, 0.95)
+    );
+    color: rgba(160, 185, 230, 0.85);
+    font: 700 10px "Noto Sans";
+    padding: 10px 8px;
+    letter-spacing: 0.8px;
+    box-shadow: none;
+}
+
+treeview header button:hover {
+    background-image: linear-gradient(
+        180deg,
+        rgba(28, 44, 92, 0.98),
+        rgba(22, 38, 78, 0.98)
+    );
+    color: #d4e4ff;
+    border-bottom-color: rgba(99, 240, 200, 0.40);
+}
+
+treeview.view:selected {
+    background-color: rgba(99, 240, 200, 0.15);
+    color: #f0fbff;
+}
+
+treeview.view:hover {
+    background-color: rgba(99, 240, 200, 0.06);
+}
+
+
+
+scrolledwindow {
+    border-radius: 12px;
+    border: 1px solid rgba(99, 240, 200, 0.10);
+    background-color: rgba(6, 12, 36, 0.55);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   COMBOBOX
+   ═══════════════════════════════════════════════════════════════════════ */
+
+combobox button {
+    background-image: linear-gradient(
+        180deg,
+        rgba(18, 30, 70, 0.85),
+        rgba(12, 22, 52, 0.82)
+    );
+    border-color: rgba(99, 240, 200, 0.12);
+    color: #ccd8f0;
+    padding: 8px 12px;
+    font: 600 12px "Noto Sans";
+}
+
+combobox button:hover {
+    border-color: rgba(99, 240, 200, 0.35);
+    color: #e8f4ff;
+}
+
+/* Combobox popup menu */
+combobox window menu {
+    background-color: rgba(12, 20, 52, 0.98);
+    border: 1px solid rgba(99, 240, 200, 0.20);
+    border-radius: 8px;
+    padding: 4px 0;
+}
+
+combobox window menu menuitem {
+    color: #ccd8f0;
+    padding: 6px 14px;
+    font: 500 13px "Noto Sans";
+}
+
+combobox window menu menuitem:hover {
+    background-color: rgba(99, 240, 200, 0.15);
+    color: #f0f8ff;
+}
+
+combobox window menu menuitem:selected {
+    background-color: rgba(99, 240, 200, 0.20);
+    color: #e0f8ee;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCROLLBAR
+   ═══════════════════════════════════════════════════════════════════════ */
+
+scrollbar {
+    background-color: transparent;
+}
+
+scrollbar slider {
+    background-color: rgba(99, 240, 200, 0.18);
+    border-radius: 10px;
+    min-width: 6px;
+    min-height: 40px;
+    border: none;
+}
+
+scrollbar slider:hover {
+    background-color: rgba(99, 240, 200, 0.30);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   USB SECTION LABEL
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.usb-section-label {
+    font: 700 10px "Noto Sans";
+    color: rgba(99, 240, 200, 0.55);
+    letter-spacing: 1.2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TOOLTIP
+   ═══════════════════════════════════════════════════════════════════════ */
+
+tooltip {
+    background-color: rgba(10, 18, 46, 0.95);
+    border: 1px solid rgba(99, 240, 200, 0.20);
+    border-radius: 8px;
+    color: #d8e8ff;
+    font: 500 12px "Noto Sans";
+    padding: 4px 8px;
+}

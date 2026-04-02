@@ -1,0 +1,1 @@
+savedcmd_/home/dat/linux-driver-project/usb_driver/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/dat/linux-driver-project/usb_driver/Module.symvers -n -T /home/dat/linux-driver-project/usb_driver/modules.order -i Module.symvers -e 
