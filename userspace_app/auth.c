@@ -68,8 +68,9 @@ int authenticate(const char *config_file) {
     char username[64], password[64];
     int attempts = 0;
     const int max_attempts = 3;
+    const int lockout_seconds = 30;
 
-    while (attempts < max_attempts) {
+    while (1) {
         printf("Username: ");
         if (!fgets(username, sizeof(username), stdin))
             return 0;
@@ -82,10 +83,70 @@ int authenticate(const char *config_file) {
         }
 
         attempts++;
-        printf("Invalid credentials. Attempts remaining: %d\n",
-               max_attempts - attempts);
+        if (attempts >= max_attempts) {
+            printf("Too many failed attempts. System locked for %d seconds.\n",
+                   lockout_seconds);
+            for (int i = lockout_seconds; i > 0; i--) {
+                printf("\rRetry in %2d seconds...", i);
+                fflush(stdout);
+                sleep(1);
+            }
+            printf("\rLock expired. Please try again.         \n");
+            attempts = 0;  /* Reset counter after lockout */
+        } else {
+            printf("Invalid credentials. Attempts remaining: %d\n",
+                   max_attempts - attempts);
+        }
     }
+}
 
-    printf("Too many failed attempts.\n");
-    return 0;
+int change_password(const char *config_file,
+                    const char *username,
+                    const char *old_password,
+                    const char *new_password) {
+    /* Verify old credentials first */
+    if (!authenticate_credentials(config_file, username, old_password))
+        return -1;  /* Wrong old password */
+
+    if (!new_password || strlen(new_password) == 0)
+        return -2;  /* New password empty */
+
+    /* Read all lines from config */
+    FILE *fp = fopen(config_file, "r");
+    if (!fp) return -3;
+
+    char lines[64][256];
+    int line_count = 0;
+    char new_hash[65];
+    hash_sha256(new_password, new_hash);
+
+    while (line_count < 64 && fgets(lines[line_count], sizeof(lines[0]), fp)) {
+        line_count++;
+    }
+    fclose(fp);
+
+    /* Rewrite file, replacing the matching user's hash */
+    fp = fopen(config_file, "w");
+    if (!fp) return -3;
+
+    for (int i = 0; i < line_count; i++) {
+        char file_user[64], file_hash[65];
+        char clean[256];
+        strncpy(clean, lines[i], sizeof(clean));
+        clean[strcspn(clean, "\n")] = '\0';
+
+        if (clean[0] == '#' || clean[0] == '\0' ||
+            sscanf(clean, "%63[^:]:%64s", file_user, file_hash) != 2) {
+            fputs(lines[i], fp);  /* Keep comments / blank lines as-is */
+            continue;
+        }
+
+        if (strcmp(file_user, username) == 0) {
+            fprintf(fp, "%s:%s\n", username, new_hash);
+        } else {
+            fputs(lines[i], fp);
+        }
+    }
+    fclose(fp);
+    return 0;  /* Success */
 }

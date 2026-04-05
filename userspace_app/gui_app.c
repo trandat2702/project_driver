@@ -44,6 +44,10 @@ typedef struct {
 
     GtkWidget *login_user_entry;
     GtkWidget *login_pass_entry;
+    GtkWidget *login_btn;           /* login button – disabled during lockout */
+
+    int login_attempts;             /* failed login attempt counter */
+    int lockout_remaining;          /* seconds remaining in lockout */
 
     GtkWidget *code_entry;
     GtkWidget *name_entry;
@@ -57,9 +61,51 @@ typedef struct {
     GtkWidget *usb_mount_entry;
     GtkWidget *usb_file_entry;
     GtkWidget *usb_text_view;
+    GtkWidget *usb_status_label;    /* USB mount status indicator */
 
     GtkWidget *sort_combo;
+
+    char logged_in_user[64];         /* username of current session */
 } AppState;
+
+/* ── USB mount status checker ──────────────────────────────────────────── */
+
+static int is_path_mounted(const char *path) {
+    if (!path || path[0] == '\0') return 0;
+    FILE *fp = fopen("/proc/mounts", "r");
+    if (!fp) return 0;
+    char line[512];
+    while (fgets(line, sizeof(line), fp)) {
+        char dev[256], mnt[256];
+        if (sscanf(line, "%255s %255s", dev, mnt) >= 2) {
+            if (strcmp(mnt, path) == 0) {
+                fclose(fp);
+                return 1;
+            }
+        }
+    }
+    fclose(fp);
+    return 0;
+}
+
+static gboolean on_usb_status_tick(gpointer user_data) {
+    AppState *app = (AppState *)user_data;
+    if (!app->usb_status_label) return G_SOURCE_CONTINUE;
+
+    const char *mount_path = gtk_entry_get_text(GTK_ENTRY(app->usb_mount_entry));
+
+    if (mount_path && mount_path[0] != '\0' && is_path_mounted(mount_path)) {
+        gtk_label_set_markup(GTK_LABEL(app->usb_status_label),
+            "<span foreground='#51cf66' font_weight='bold'>●  USB \304\221\303\243 mount</span>");
+    } else if (mount_path && mount_path[0] != '\0') {
+        gtk_label_set_markup(GTK_LABEL(app->usb_status_label),
+            "<span foreground='#ff6b6b' font_weight='bold'>○  Ch\306\260a mount</span>");
+    } else {
+        gtk_label_set_markup(GTK_LABEL(app->usb_status_label),
+            "<span foreground='#868e96'>○  Nh\341\272\255p \304\221\306\260\341\273\235ng d\341\272\253n USB</span>");
+    }
+    return G_SOURCE_CONTINUE;
+}
 
 /* ── Validation helpers ────────────────────────────────────────────────── */
 
@@ -222,6 +268,38 @@ static int get_selected_code(AppState *app, char *out, size_t out_size) {
 
 /* ── Callbacks ─────────────────────────────────────────────────────────── */
 
+/* ── Login lockout timer callback ──────────────────────────────────────── */
+
+static gboolean on_lockout_tick(gpointer user_data) {
+    AppState *app = (AppState *)user_data;
+    app->lockout_remaining--;
+
+    if (app->lockout_remaining <= 0) {
+        /* Unlock */
+        gtk_widget_set_sensitive(app->login_btn, TRUE);
+        gtk_widget_set_sensitive(app->login_user_entry, TRUE);
+        gtk_widget_set_sensitive(app->login_pass_entry, TRUE);
+        app->login_attempts = 0;
+        if (app->login_status_label) {
+            gtk_label_set_text(GTK_LABEL(app->login_status_label),
+                               "Đã mở khóa. Vui lòng thử lại.");
+            gtk_widget_show(app->login_status_label);
+        }
+        return G_SOURCE_REMOVE;  /* stop timer */
+    }
+
+    /* Update countdown */
+    char msg[128];
+    snprintf(msg, sizeof(msg),
+             "Đăng nhập bị khóa. Thử lại sau %d giây...",
+             app->lockout_remaining);
+    if (app->login_status_label) {
+        gtk_label_set_text(GTK_LABEL(app->login_status_label), msg);
+        gtk_widget_show(app->login_status_label);
+    }
+    return G_SOURCE_CONTINUE;  /* keep ticking */
+}
+
 static void on_login_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     AppState *app = (AppState *)user_data;
@@ -244,14 +322,37 @@ static void on_login_clicked(GtkButton *btn, gpointer user_data) {
     }
 
     if (!authenticate_credentials("config.txt", username, password)) {
+        app->login_attempts++;
+        char err_msg[160];
+
+        if (app->login_attempts >= 3) {
+            /* Lock out for 30 seconds */
+            app->lockout_remaining = 30;
+            gtk_widget_set_sensitive(app->login_btn, FALSE);
+            gtk_widget_set_sensitive(app->login_user_entry, FALSE);
+            gtk_widget_set_sensitive(app->login_pass_entry, FALSE);
+
+            snprintf(err_msg, sizeof(err_msg),
+                     "Sai 3 lần liên tiếp. Khóa đăng nhập %d giây...",
+                     app->lockout_remaining);
+            g_timeout_add_seconds(1, on_lockout_tick, app);
+        } else {
+            snprintf(err_msg, sizeof(err_msg),
+                     "Sai tài khoản hoặc mật khẩu (còn %d lần thử)",
+                     3 - app->login_attempts);
+        }
+
         if (app->login_status_label) {
-            gtk_label_set_text(GTK_LABEL(app->login_status_label),
-                               "Sai tài khoản hoặc mật khẩu");
+            gtk_label_set_text(GTK_LABEL(app->login_status_label), err_msg);
             gtk_widget_show(app->login_status_label);
         }
         return;
     }
 
+    /* Success – reset counter and save username */
+    app->login_attempts = 0;
+    strncpy(app->logged_in_user, username, sizeof(app->logged_in_user) - 1);
+    app->logged_in_user[sizeof(app->logged_in_user) - 1] = '\0';
     gtk_stack_set_visible_child_name(GTK_STACK(app->stack), "dashboard");
     set_status(app, "Đăng nhập thành công. Xin chào, %s!", username);
 }
@@ -508,9 +609,100 @@ static void on_browse_usb_file_clicked(GtkButton *btn, gpointer user_data) {
     gtk_widget_destroy(dialog);
 }
 
+static void on_change_password_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    AppState *app = (AppState *)user_data;
+
+    GtkWidget *dialog = gtk_dialog_new_with_buttons(
+        "Đổi mật khẩu", GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "Xác nhận", GTK_RESPONSE_ACCEPT,
+        "Hủy",     GTK_RESPONSE_CANCEL,
+        NULL);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 380, -1);
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 16);
+    gtk_box_set_spacing(GTK_BOX(content), 8);
+
+    GtkWidget *lbl_info = gtk_label_new(NULL);
+    char info_buf[128];
+    snprintf(info_buf, sizeof(info_buf),
+             "Đổi mật khẩu cho tài khoản: <b>%s</b>", app->logged_in_user);
+    gtk_label_set_markup(GTK_LABEL(lbl_info), info_buf);
+    gtk_widget_set_halign(lbl_info, GTK_ALIGN_START);
+
+    GtkWidget *old_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(old_entry), "Mật khẩu cũ");
+    gtk_entry_set_visibility(GTK_ENTRY(old_entry), FALSE);
+    gtk_entry_set_invisible_char(GTK_ENTRY(old_entry), 0x25CF);
+
+    GtkWidget *new_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(new_entry), "Mật khẩu mới");
+    gtk_entry_set_visibility(GTK_ENTRY(new_entry), FALSE);
+    gtk_entry_set_invisible_char(GTK_ENTRY(new_entry), 0x25CF);
+
+    GtkWidget *confirm_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(confirm_entry), "Xác nhận mật khẩu mới");
+    gtk_entry_set_visibility(GTK_ENTRY(confirm_entry), FALSE);
+    gtk_entry_set_invisible_char(GTK_ENTRY(confirm_entry), 0x25CF);
+
+    GtkWidget *err_label = gtk_label_new("");
+    gtk_widget_set_halign(err_label, GTK_ALIGN_START);
+
+    gtk_box_pack_start(GTK_BOX(content), lbl_info,       FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), old_entry,      FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), new_entry,      FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), confirm_entry,  FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), err_label,      FALSE, FALSE, 0);
+    gtk_widget_show_all(content);
+
+    while (1) {
+        int response = gtk_dialog_run(GTK_DIALOG(dialog));
+        if (response != GTK_RESPONSE_ACCEPT) break;
+
+        const char *old_pw  = gtk_entry_get_text(GTK_ENTRY(old_entry));
+        const char *new_pw  = gtk_entry_get_text(GTK_ENTRY(new_entry));
+        const char *conf_pw = gtk_entry_get_text(GTK_ENTRY(confirm_entry));
+
+        if (is_blank(old_pw) || is_blank(new_pw) || is_blank(conf_pw)) {
+            gtk_label_set_markup(GTK_LABEL(err_label),
+                "<span color='#ff6b6b'>Vui lòng điền đầy đủ các trường</span>");
+            continue;
+        }
+        if (strcmp(new_pw, conf_pw) != 0) {
+            gtk_label_set_markup(GTK_LABEL(err_label),
+                "<span color='#ff6b6b'>Mật khẩu mới không khớp</span>");
+            continue;
+        }
+        if (strcmp(old_pw, new_pw) == 0) {
+            gtk_label_set_markup(GTK_LABEL(err_label),
+                "<span color='#ff6b6b'>Mật khẩu mới phải khác mật khẩu cũ</span>");
+            continue;
+        }
+
+        int rc = change_password("config.txt", app->logged_in_user, old_pw, new_pw);
+        if (rc == -1) {
+            gtk_label_set_markup(GTK_LABEL(err_label),
+                "<span color='#ff6b6b'>Mật khẩu cũ không đúng</span>");
+            continue;
+        } else if (rc < 0) {
+            gtk_label_set_markup(GTK_LABEL(err_label),
+                "<span color='#ff6b6b'>Lỗi hệ thống, không thể đổi mật khẩu</span>");
+            continue;
+        }
+
+        /* Success */
+        set_status(app, "Đổi mật khẩu thành công cho tài khoản %s", app->logged_in_user);
+        break;
+    }
+    gtk_widget_destroy(dialog);
+}
+
 static void on_logout_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     AppState *app = (AppState *)user_data;
+    app->logged_in_user[0] = '\0';
     gtk_stack_set_visible_child_name(GTK_STACK(app->stack), "login");
     gtk_entry_set_text(GTK_ENTRY(app->login_user_entry), "");
     gtk_entry_set_text(GTK_ENTRY(app->login_pass_entry), "");
@@ -658,6 +850,7 @@ static GtkWidget *build_login_view(AppState *app) {
     gtk_style_context_add_class(gtk_widget_get_style_context(card),  "glass-card");
     gtk_style_context_add_class(gtk_widget_get_style_context(title), "login-title");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn),   "primary-btn");
+    app->login_btn = btn;  /* save reference for lockout */
 
     gtk_entry_set_visibility(GTK_ENTRY(app->login_pass_entry), FALSE);
     gtk_entry_set_invisible_char(GTK_ENTRY(app->login_pass_entry), 0x25CF); /* ● */
@@ -750,6 +943,8 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_widget_set_vexpand(sidebar_spacer, TRUE);
 
     GtkWidget *sep4 = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+    GtkWidget *btn_change_pw = gtk_button_new_with_label("🔑  Đổi mật khẩu");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_change_pw), "side-action");
     GtkWidget *btn_logout = gtk_button_new_with_label("⏻  Đăng xuất");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_logout), "danger-btn");
 
@@ -772,6 +967,7 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_box_pack_start(GTK_BOX(sidebar), btn_load,        FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), sidebar_spacer,  TRUE,  TRUE,  0);
     gtk_box_pack_start(GTK_BOX(sidebar), sep4,            FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(sidebar), btn_change_pw,   FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), btn_logout,      FALSE, FALSE, 0);
 
     /* ════════ CONTENT AREA ════════ */
@@ -940,10 +1136,19 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_widget_set_size_request(usb_scroll, -1, 80);
     gtk_container_add(GTK_CONTAINER(usb_scroll), app->usb_text_view);
 
-    gtk_box_pack_start(GTK_BOX(usb_outer), usb_fields,  FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(usb_outer), usb_btn_row, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(usb_outer), usb_scroll,  FALSE, FALSE, 0);
+    /* USB mount status indicator */
+    app->usb_status_label = gtk_label_new("");
+    gtk_widget_set_halign(app->usb_status_label, GTK_ALIGN_START);
+
+    gtk_box_pack_start(GTK_BOX(usb_outer), usb_fields,            FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(usb_outer), app->usb_status_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(usb_outer), usb_btn_row,           FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(usb_outer), usb_scroll,            FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(usb_expander), usb_outer);
+
+    /* Start USB mount monitor (every 2 seconds) */
+    g_timeout_add_seconds(2, on_usb_status_tick, app);
+    on_usb_status_tick(app);  /* Initial check */
 
     /* ── Status bar ─────────────────────────────────────────────────── */
     app->status_label = gtk_label_new("Sẵn sàng");
@@ -987,7 +1192,8 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     g_signal_connect(btn_browse_usb,       "clicked", G_CALLBACK(on_browse_usb_mount_clicked), app);
     g_signal_connect(btn_browse_usb_file,  "clicked", G_CALLBACK(on_browse_usb_file_clicked),  app);
 
-    g_signal_connect(btn_logout, "clicked", G_CALLBACK(on_logout_clicked), app);
+    g_signal_connect(btn_change_pw, "clicked", G_CALLBACK(on_change_password_clicked), app);
+    g_signal_connect(btn_logout,    "clicked", G_CALLBACK(on_logout_clicked), app);
 
     set_status(app, "Mẹo: chọn một dòng trong bảng để tự động điền vào form");
     return shell;

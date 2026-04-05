@@ -6,5 +6,9 @@ int  authenticate_credentials(const char *config_file,
 							  const char *username,
 							  const char *password);
 int  authenticate(const char *config_file);
+int  change_password(const char *config_file,
+                     const char *username,
+                     const char *old_password,
+                     const char *new_password);
 
 #endif
