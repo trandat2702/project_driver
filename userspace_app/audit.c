@@ -3,6 +3,15 @@
 #include <time.h>
 #include "audit.h"
 
+/*
+ * Audit log là lớp ghi vết tối giản của hệ thống.
+ *
+ * Mỗi dòng log có dạng:
+ *   [YYYY-MM-DD HH:MM:SS] [username] action...
+ *
+ * Thiết kế này đủ nhẹ để gọi trực tiếp từ GUI callback và các thao tác nghiệp vụ
+ * mà không cần thêm subsystem logging phức tạp.
+ */
 void log_audit(const char *username, const char *action_fmt, ...) {
     FILE *fp = fopen(AUDIT_LOG_FILE, "a");
     if (!fp) return;

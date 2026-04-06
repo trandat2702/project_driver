@@ -3,6 +3,8 @@
 
 #define AUDIT_LOG_FILE "audit.log"
 
+/* Header này khai báo API ghi audit log dùng chung cho GUI và nghiệp vụ. */
+
 /*
  * Ghi lại thao tác của hệ thống.
  * - username: Tên tài khoản đang thực hiện (truyền "SYSTEM" nếu là hệ thống)

@@ -28,6 +28,15 @@
 #define COL_GPA   4          /* now G_TYPE_STRING – "%.2f" formatted */
 #define USB_TEXT_BUF_SIZE 2048
 
+/*
+ * AppState gom toàn bộ "trạng thái sống" của GUI vào một struct duy nhất.
+ *
+ * Nhờ đó các callback GTK có thể nhận cùng một con trỏ AppState và:
+ * - truy cập dữ liệu sinh viên trong RAM
+ * - cập nhật widget đang hiển thị
+ * - gọi sang các module nghiệp vụ như auth/student/usb_file/audit
+ */
+
 /* ── AppState ──────────────────────────────────────────────────────────── */
 
 typedef struct {
@@ -99,6 +108,11 @@ static int is_path_mounted(const char *path) {
     return 0;
 }
 
+/*
+ * Tick định kỳ để GUI tự phản ánh trạng thái mount của đường dẫn USB mà
+ * người dùng đang nhập. Đây là kiểm tra ở user space dựa trên /proc/mounts,
+ * không liên quan trực tiếp đến usb_driver kernel module.
+ */
 static gboolean on_usb_status_tick(gpointer user_data) {
     AppState *app = (AppState *)user_data;
     if (!app->usb_status_label) return G_SOURCE_CONTINUE;
@@ -317,6 +331,11 @@ static void on_login_clicked(GtkButton *btn, gpointer user_data) {
     const char *username = gtk_entry_get_text(GTK_ENTRY(app->login_user_entry));
     const char *password = gtk_entry_get_text(GTK_ENTRY(app->login_pass_entry));
 
+    /*
+     * Callback này là cửa vào chính của GUI:
+     * UI -> auth.c -> role -> bật/tắt các nút theo RBAC -> chuyển sang dashboard.
+     */
+
     /* Clear any previous inline error */
     if (app->login_status_label) {
         gtk_label_set_text(GTK_LABEL(app->login_status_label), "");
@@ -378,7 +397,10 @@ static void on_login_clicked(GtkButton *btn, gpointer user_data) {
         gtk_label_set_text(GTK_LABEL(app->topbar_user_label), user_info);
     }
 
-    /* Apply role-based UI */
+    /*
+     * Quyền được áp ngay trên widget:
+     * viewer vẫn xem danh sách được, nhưng các nút thay đổi dữ liệu bị khóa.
+     */
     int is_admin = (strcmp(role, ROLE_ADMIN) == 0);
     if (app->btn_add)    gtk_widget_set_sensitive(app->btn_add,    is_admin);
     if (app->btn_edit)   gtk_widget_set_sensitive(app->btn_edit,   is_admin);
@@ -421,6 +443,10 @@ static void on_add_clicked(GtkButton *btn, gpointer user_data) {
         return;
     }
 
+    /*
+     * add_student() sẽ gọi tiếp sang student.c, và ở đó tên sinh viên có thể
+     * đi qua /dev/string_norm trước khi được đưa vào mảng app->list.
+     */
     if (add_student(app->list, &app->count, code, name, student_class, dob, gpa) == 0) {
         refresh_main_table(app);
         set_status(app, "Thêm sinh viên %s thành công!", code);
@@ -495,6 +521,7 @@ static void on_save_clicked(GtkButton *btn, gpointer user_data) {
     const char *file   = gtk_entry_get_text(GTK_ENTRY(app->file_entry));
     const char *target = is_blank(file) ? "students.txt" : file;
 
+    /* Lưu chụp trạng thái mảng sinh viên hiện tại xuống file đích. */
     if (save_to_file(target, app->list, app->count) == 0) {
         set_status(app, "Đã lưu danh sách vào %s", target);
         log_audit(app->logged_in_user, "Saved data to file: %s", target);
@@ -515,6 +542,10 @@ static void on_load_clicked(GtkButton *btn, gpointer user_data) {
         return;
     }
 
+    /*
+     * load_from_file() thay thế toàn bộ danh sách trong RAM,
+     * nên sau khi load phải refresh lại TreeView.
+     */
     if (load_from_file(target, app->list, &app->count) == 0) {
         refresh_main_table(app);
         set_status(app, "Đã tải %d sinh viên từ: %s", app->count, target);
@@ -529,6 +560,7 @@ static void get_usb_text(AppState *app, char *out, size_t out_size) {
     GtkTextIter start, end;
     gchar *text;
 
+    /* Lấy toàn bộ nội dung TextView làm payload cho thao tác ghi file USB. */
     out[0] = '\0';
     buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(app->usb_text_view));
     gtk_text_buffer_get_start_iter(buffer, &start);
@@ -558,6 +590,7 @@ static void on_usb_write_clicked(GtkButton *btn, gpointer user_data) {
         return;
     }
     get_usb_text(app, content, sizeof(content));
+    /* Ghi file thông qua module usb_file.c ở user space, không đi qua usb_driver. */
     if (usb_write_text_file(mount_path, file_name, content) == 0) {
         set_status(app, "Ghi USB thành công: %s/%s", mount_path, file_name);
         log_audit(app->logged_in_user, "Wrote to USB: %s/%s", mount_path, file_name);
@@ -576,6 +609,7 @@ static void on_usb_read_clicked(GtkButton *btn, gpointer user_data) {
         set_status(app, "Duong dan USB hoac ten file khong duoc de trong");
         return;
     }
+    /* Đọc file text từ đường dẫn mount và đổ nội dung lại vào TextView. */
     if (usb_read_text_file(mount_path, file_name, output, sizeof(output)) == 0) {
         set_usb_text(app, output);
         set_status(app, "Doc USB thành công: %s/%s", mount_path, file_name);
@@ -588,6 +622,7 @@ static void on_usb_read_clicked(GtkButton *btn, gpointer user_data) {
 static void on_export_csv_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     AppState *app = (AppState *)user_data;
+    /* Export báo cáo CSV phục vụ mở bằng Excel; dữ liệu lấy từ app->list hiện tại. */
     
     GtkWidget *dialog = gtk_file_chooser_dialog_new("Lưu File CSV",
                                       GTK_WINDOW(app->window),
@@ -626,6 +661,10 @@ static void on_export_usb_clicked(GtkButton *btn, gpointer user_data) {
                         "Xuat toan bo danh sach hien tai ra USB?"))
         return;
 
+    /*
+     * Luồng export TXT ra USB thực chất chỉ là save_to_file() với đích là
+     * một đường dẫn nằm trong thư mục mount của thiết bị USB.
+     */
     snprintf(full_path, sizeof(full_path), "%s/%s", mount_path, file_name);
     if (save_to_file(full_path, app->list, app->count) == 0) {
         set_status(app, "Đã xuất danh sách (%d SV) vào %s", app->count, full_path);
@@ -773,6 +812,7 @@ static void on_change_password_clicked(GtkButton *btn, gpointer user_data) {
 static void on_logout_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     AppState *app = (AppState *)user_data;
+    /* Reset trạng thái phiên GUI để quay về màn đăng nhập sạch. */
     app->logged_in_user[0] = '\0';
     gtk_stack_set_visible_child_name(GTK_STACK(app->stack), "login");
     gtk_entry_set_text(GTK_ENTRY(app->login_user_entry), "");
@@ -802,12 +842,17 @@ static void on_edit_clicked(GtkButton *btn, gpointer user_data) {
         code[sizeof(code) - 1] = '\0';
     }
 
+    /*
+     * GUI edit thao tác trực tiếp trên bản ghi trong RAM.
+     * Sau khi cập nhật xong phải vẽ lại bảng vì TreeView không tự đồng bộ.
+     */
     for (int i = 0; i < app->count; i++) {
         Student *s = &app->list[i];
         if (strcmp(s->student_code, code) == 0) {
             if (!is_blank(name)) {
                 strncpy(s->raw_name, name, MAX_NAME_LEN - 1);
                 s->raw_name[MAX_NAME_LEN - 1] = '\0';
+                /* Giữ cùng quy ước chuẩn hóa tên như lúc thêm mới. */
                 if (normalize_via_driver(name, s->normalized_name, MAX_NAME_LEN) < 0) {
                     strncpy(s->normalized_name, name, MAX_NAME_LEN - 1);
                     s->normalized_name[MAX_NAME_LEN - 1] = '\0';
@@ -962,6 +1007,7 @@ typedef struct {
 static void refresh_user_list(ManageUsersState *st) {
     char users[MAX_USERS][MAX_USERNAME];
     char roles[MAX_USERS][MAX_ROLE_LEN];
+    /* Đọc lại config.txt để bảng user trong dialog luôn phản ánh dữ liệu mới nhất. */
     int count = list_users("config.txt", users, roles, MAX_USERS);
     gtk_list_store_clear(st->store);
     for (int i = 0; i < count; i++) {
@@ -977,6 +1023,7 @@ static void on_mu_add_clicked(GtkButton *btn, gpointer data) {
     const char *u = gtk_entry_get_text(GTK_ENTRY(st->user_entry));
     const char *p = gtk_entry_get_text(GTK_ENTRY(st->pass_entry));
     char *r = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(st->role_combo));
+    /* Hộp thoại này là lớp GUI mỏng; validate sâu hơn nằm trong auth.c. */
     if (u[0] && p[0] && r) {
         add_user("config.txt", u, p, r);
         log_audit(st->app->logged_in_user, "Created user: %s (Role: %s)", u, r);
@@ -996,6 +1043,7 @@ static void on_mu_del_clicked(GtkButton *btn, gpointer data) {
     if (gtk_tree_selection_get_selected(sel, &model, &iter)) {
         gchar *u;
         gtk_tree_model_get(model, &iter, 0, &u, -1);
+        /* Không cho xóa chính tài khoản đang đăng nhập để tránh tự khóa phiên hiện tại. */
         if (strcmp(u, st->app->logged_in_user) != 0) {
             delete_user("config.txt", u);
             log_audit(st->app->logged_in_user, "Deleted user: %s", u);

@@ -5,6 +5,19 @@
 #include <openssl/sha.h>
 #include "auth.h"
 
+/*
+ * Module xác thực / phân quyền của ứng dụng.
+ *
+ * Dữ liệu tài khoản được lưu trong config.txt theo dạng:
+ *   username:sha256hash:role
+ *
+ * Chủ đích thiết kế:
+ * - băm mật khẩu ở user space bằng OpenSSL
+ * - so khớp với file cấu hình
+ * - tách vai trò admin/viewer để GUI bật/tắt chức năng tương ứng
+ */
+
+/* Chuyển chuỗi mật khẩu thành SHA-256 hex string dài 64 ký tự. */
 void hash_sha256(const char *input, char *output_hex) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256((unsigned char *)input, strlen(input), hash);
@@ -13,6 +26,7 @@ void hash_sha256(const char *input, char *output_hex) {
     output_hex[64] = '\0';
 }
 
+/* Ẩn echo trên terminal để mật khẩu CLI không hiện plaintext khi gõ. */
 static void read_password(const char *prompt, char *buf, size_t n) {
     struct termios old, noecho;
     printf("%s", prompt);
@@ -66,6 +80,7 @@ static int parse_config_line(const char *line,
 int authenticate_credentials(const char *config_file,
                              const char *username,
                              const char *password) {
+    /* Wrapper đơn giản khi caller chỉ cần biết đúng/sai, không cần role. */
     return authenticate_with_role(config_file, username, password, NULL, 0);
 }
 
@@ -75,6 +90,13 @@ int authenticate_with_role(const char *config_file,
                            const char *username,
                            const char *password,
                            char *role_out, size_t role_size) {
+    /*
+     * Hàm xác thực lõi:
+     * - băm mật khẩu người dùng vừa nhập
+     * - đọc từng dòng config.txt
+     * - so khớp username + hash
+     * - nếu cần, trả ra role để tầng GUI áp RBAC
+     */
     char input_hash[65];
     char line[256], file_user[64], file_hash[65], file_role[16];
     FILE *fp;
@@ -114,6 +136,10 @@ int authenticate_with_role(const char *config_file,
 /* ── CLI authenticate (interactive) ────────────────────────────────── */
 
 int authenticate(const char *config_file) {
+    /*
+     * Luồng đăng nhập dành cho CLI.
+     * GUI không dùng hàm này; GUI tự quản lý lockout và hiển thị lỗi riêng.
+     */
     char username[64], password[64];
     int attempts = 0;
     const int max_attempts = 3;
@@ -133,6 +159,7 @@ int authenticate(const char *config_file) {
 
         attempts++;
         if (attempts >= max_attempts) {
+            /* Lockout cứng trên giao diện dòng lệnh để giảm brute-force cơ bản. */
             printf("Too many failed attempts. System locked for %d seconds.\n",
                    lockout_seconds);
             for (int i = lockout_seconds; i > 0; i--) {
@@ -155,6 +182,10 @@ int change_password(const char *config_file,
                     const char *username,
                     const char *old_password,
                     const char *new_password) {
+    /*
+     * Đổi mật khẩu nhưng giữ nguyên role.
+     * Cách làm: nạp toàn bộ file vào RAM, sau đó rewrite file với hash mới.
+     */
     /* Verify old credentials first */
     if (!authenticate_credentials(config_file, username, old_password))
         return -1;  /* Wrong old password */
@@ -205,6 +236,7 @@ int change_password(const char *config_file,
 int get_user_role(const char *config_file,
                   const char *username,
                   char *role_out, size_t role_size) {
+    /* Hàm tiện ích để tầng trên hỏi riêng role mà không cần xác thực lại mật khẩu. */
     char line[256], file_user[64], file_hash[65], file_role[16];
     FILE *fp;
 
@@ -238,6 +270,10 @@ int add_user(const char *config_file,
              const char *username,
              const char *password,
              const char *role) {
+    /*
+     * Thêm user mới vào cuối file config.
+     * Mật khẩu luôn được băm trước khi ghi ra đĩa; file không lưu plaintext password.
+     */
     char line[256], file_user[64], file_hash[65], file_role[16];
     FILE *fp;
 
@@ -282,6 +318,10 @@ int add_user(const char *config_file,
 
 int delete_user(const char *config_file,
                 const char *username) {
+    /*
+     * Xóa user bằng cách rewrite lại file và bỏ qua dòng tương ứng.
+     * Đây là mô hình đơn giản nhưng đủ cho project file-based cỡ nhỏ.
+     */
     FILE *fp;
 
     if (!config_file || !username || strlen(username) == 0)
@@ -338,6 +378,7 @@ int list_users(const char *config_file,
                char usernames[][MAX_USERNAME],
                char roles[][MAX_ROLE_LEN],
                int max_entries) {
+    /* Trả danh sách user + role cho hộp thoại quản lý tài khoản trong GUI. */
     char line[256], file_user[64], file_hash[65], file_role[16];
     FILE *fp;
     int count = 0;
