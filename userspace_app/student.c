@@ -24,6 +24,10 @@
  *
  * Nếu driver đã được nạp, chuỗi đầu vào sẽ đi qua kernel module để chuẩn hóa.
  * Nếu mở device thất bại, hàm trả lỗi để lớp gọi phía trên tự quyết định fallback.
+ *
+ * Vì sao tách riêng hàm này:
+ * - phần còn lại của student.c không cần biết chi tiết open/write/read
+ * - khi test unit, hàm này có thể bị thay bằng mock để không phụ thuộc kernel
  */
 int normalize_via_driver(const char *input, char *output, int buf_size) {
     int fd = open("/dev/string_norm", O_RDWR);
@@ -34,9 +38,11 @@ int normalize_via_driver(const char *input, char *output, int buf_size) {
     }
 
     ssize_t w = write(fd, input, strlen(input));
+    /* write() gửi chuỗi thô xuống driver; driver sẽ xử lý và lưu kết quả nội bộ. */
     if (w < 0) { perror("write"); close(fd); return -1; }
 
     ssize_t r = read(fd, output, buf_size - 1);
+    /* read() lấy lại chuỗi đã được driver chuẩn hóa. */
     if (r < 0) { perror("read");  close(fd); return -1; }
     output[r] = '\0';
 
@@ -56,6 +62,7 @@ static int is_blank_string(const char *s) {
 }
 
 static int is_valid_load_code(const char *s) {
+    /* Mã sinh viên chỉ chấp nhận chữ và số để tránh ký tự lạ trong file dữ liệu. */
     if (!s || s[0] == '\0') return 0;
     while (*s) {
         if (!isalnum((unsigned char)*s)) return 0;
@@ -65,6 +72,14 @@ static int is_valid_load_code(const char *s) {
 }
 
 static int is_valid_load_dob(const char *s) {
+    /*
+     * Kiểm tra mức cơ bản:
+     * - đúng độ dài dd/mm/yyyy
+     * - có dấu '/'
+     * - ngày/tháng/năm nằm trong khoảng chấp nhận được
+     *
+     * Hàm này chưa kiểm tra sâu các trường hợp như 31/02 hay năm nhuận.
+     */
     int d, m, y;
     if (!s || strlen(s) != 10) return 0;
     if (s[2] != '/' || s[5] != '/') return 0;
@@ -84,6 +99,7 @@ static void normalize_field_upper_no_space(char *dest, const char *src, int max_
     if (!dest || !src) return;
     int j = 0;
     for (int i = 0; src[i] != '\0' && j < max_len - 1; i++) {
+        /* Bỏ toàn bộ khoảng trắng và ép về chữ in hoa để thống nhất định dạng khóa. */
         if (!isspace((unsigned char)src[i])) {
             dest[j++] = toupper((unsigned char)src[i]);
         }
@@ -96,12 +112,16 @@ static void normalize_field_upper_no_space(char *dest, const char *src, int max_
 int add_student(Student *list, int *count, const char *code,
                 const char *raw_name, const char *student_class,
                 const char *dob, float gpa) {
+    /*
+     * add_student() chỉ thao tác trên mảng trong RAM.
+     * Việc lưu xuống file là trách nhiệm của save_to_file().
+     */
     if (*count >= MAX_STUDENTS) {
         printf("ERROR: Student list is full\n");
         return -1;
     }
 
-    /* Kiem tra trung Ma sinh vien */
+    /* Mã sinh viên được coi là khóa chính nên không được phép trùng. */
     for (int i = 0; i < *count; i++) {
         if (strcmp(list[i].student_code, code) == 0) {
             printf("ERROR: Student code '%s' already exists\n", code);
@@ -128,6 +148,7 @@ int add_student(Student *list, int *count, const char *code,
         s->normalized_name[MAX_NAME_LEN - 1] = '\0';
     }
 
+    /* Lớp học cũng được đưa về dạng "không khoảng trắng + in hoa". */
     normalize_field_upper_no_space(s->student_class, student_class, MAX_CLASS_LEN);
 
     strncpy(s->dob, dob, MAX_DOB_LEN - 1);
@@ -142,6 +163,7 @@ int add_student(Student *list, int *count, const char *code,
 }
 
 int delete_student(Student *list, int *count, const char *code) {
+    /* Xóa theo cơ chế mảng tĩnh: tìm thấy thì dịch toàn bộ phần đuôi sang trái. */
     for (int i = 0; i < *count; i++) {
         if (strcmp(list[i].student_code, code) == 0) {
             /* Dồn mảng sang trái để giữ danh sách liên tục, không có lỗ trống. */
@@ -168,6 +190,7 @@ int search_student(Student *list, int count,
      * - student_code: để tìm nhanh theo mã sinh viên
      */
     for (int i = 0; i < count; i++) {
+        /* strstr() tìm theo kiểu "chuỗi con", nên nhập một phần tên vẫn có thể khớp. */
         if (strstr(list[i].normalized_name, name) ||
             strstr(list[i].raw_name, name) ||
             strstr(list[i].student_code, name)) {
@@ -180,6 +203,10 @@ int search_student(Student *list, int count,
 /* ========== Edit ========== */
 
 int edit_student(Student *list, int count, const char *code) {
+    /*
+     * edit_student() phục vụ bản CLI.
+     * GUI không gọi hàm này mà tự sửa trực tiếp trên AppState trong gui_app.c.
+     */
     int idx = -1;
     char buf[MAX_NAME_LEN];
 
@@ -236,8 +263,10 @@ int edit_student(Student *list, int count, const char *code) {
         }
     }
 
-    /* GPA */
-    /* GPA - Vong lap cho den khi hop le hoac trong */
+    /*
+     * GPA dùng vòng lặp riêng vì đây là trường số dễ nhập sai.
+     * Người dùng có thể nhấn Enter để giữ nguyên.
+     */
     while (1) {
         printf("New GPA [%.2f]: ", s->gpa);
         if (!fgets(buf, sizeof(buf), stdin)) break;
@@ -265,6 +294,7 @@ int edit_student(Student *list, int count, const char *code) {
 /* qsort() cần callback so sánh riêng cho từng tiêu chí. */
 
 static int cmp_by_name(const void *a, const void *b) {
+    /* qsort() truyền vào con trỏ void*, nên phải ép kiểu về Student trước khi so sánh. */
     const Student *sa = (const Student *)a;
     const Student *sb = (const Student *)b;
     return strcmp(sa->normalized_name, sb->normalized_name);
@@ -283,12 +313,14 @@ static int cmp_by_gpa_desc(const void *a, const void *b) {
 }
 
 void sort_by_name(Student *list, int count) {
+    /* count <= 1 thì qsort() không cần thiết; return sớm để đơn giản hóa luồng. */
     if (count <= 1) return;
     qsort(list, count, sizeof(Student), cmp_by_name);
     printf("Sorted by name (A-Z).\n");
 }
 
 void sort_by_gpa(Student *list, int count, int ascending) {
+    /* Chọn callback tăng/giảm ngay tại lời gọi qsort() để tránh lặp code. */
     if (count <= 1) return;
     qsort(list, count, sizeof(Student),
           ascending ? cmp_by_gpa_asc : cmp_by_gpa_desc);
@@ -329,6 +361,11 @@ void print_student_list(Student *list, int count) {
  */
 
 int save_to_file(const char *filename, Student *list, int count) {
+    /*
+     * File lưu theo định dạng:
+     *   code|name|class|dob|gpa
+     * Dòng đầu tiên là comment/header để người đọc dễ nhận biết cấu trúc.
+     */
     FILE *fp = fopen(filename, "w");
     if (!fp) {
         perror("fopen");
@@ -339,6 +376,7 @@ int save_to_file(const char *filename, Student *list, int count) {
     flock(fileno(fp), LOCK_EX);
     fprintf(fp, "# code|name|class|dob|gpa\n");
     for (int i = 0; i < count; i++) {
+        /* Lưu normalized_name để lần sau mở lại vẫn hiển thị dữ liệu đã làm sạch. */
         fprintf(fp, "%s|%s|%s|%s|%.2f\n",
                 list[i].student_code,
                 list[i].normalized_name,
@@ -354,6 +392,10 @@ int save_to_file(const char *filename, Student *list, int count) {
 }
 
 int load_from_file(const char *filename, Student *list, int *count) {
+    /*
+     * Hàm này đóng vai trò như "bộ lọc đầu vào" cho dữ liệu file.
+     * Thay vì tin tưởng toàn bộ nội dung file, nó chỉ nhận các dòng hợp lệ.
+     */
     FILE *fp = fopen(filename, "r");
     char line[512];
 
@@ -366,6 +408,7 @@ int load_from_file(const char *filename, Student *list, int *count) {
      */
     *count = 0;
     while (fgets(line, sizeof(line), fp) && *count < MAX_STUDENTS) {
+        /* Bỏ qua comment và dòng trống để file có thể đọc được cả khi người dùng ghi chú tay. */
         if (line[0] == '#' || line[0] == '\n')
             continue;
 
@@ -376,6 +419,10 @@ int load_from_file(const char *filename, Student *list, int *count) {
         char dob_buf[MAX_DOB_LEN];
         float gpa_val;
 
+        /*
+         * Tách 5 cột bằng sscanf theo dấu '|'.
+         * Nếu không đọc đủ 5 trường, dòng đó bị coi là lỗi format.
+         */
         if (sscanf(line, "%19[^|]|%255[^|]|%19[^|]|%14[^|]|%f",
                    code_buf, name_buf, class_buf, dob_buf, &gpa_val) == 5) {
 
@@ -404,6 +451,10 @@ int load_from_file(const char *filename, Student *list, int *count) {
             }
             if (is_dup) continue; /* Skip malformed duplicate line */
 
+            /*
+             * Khi load lại từ file, name_buf đang được coi là "tên đã chuẩn hóa"
+             * vì save_to_file() đã lưu normalized_name chứ không lưu raw_name gốc.
+             */
             strncpy(s->normalized_name, name_buf, MAX_NAME_LEN - 1);
             s->normalized_name[MAX_NAME_LEN - 1] = '\0';
 
@@ -426,6 +477,11 @@ int load_from_file(const char *filename, Student *list, int *count) {
 }
 
 int export_to_csv(const char *filename, Student *list, int count) {
+    /*
+     * Export CSV khác save_to_file():
+     * - save_to_file() phục vụ chương trình đọc lại
+     * - export_to_csv() phục vụ con người / Excel xem báo cáo
+     */
     FILE *fp = fopen(filename, "w");
     if (!fp) return -1;
 
