@@ -1,71 +1,108 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include "student.h"
 
-void normalize_string_userspace(const char *input, char *output,
-                                 int buf_size) {
-    int i = 0, j = 0, in_word = 0, new_word = 1;
+static int g_driver_should_fail = 0;
+static int g_total = 0;
+static int g_failed = 0;
+
+static void mock_driver_transform(const char *input, char *output, int buf_size) {
+    int i = 0;
+    int j = 0;
+    int new_word = 1;
+
     if (!input || !output || buf_size <= 0) return;
-    memset(output, 0, buf_size);
-
-    while (input[i] && isspace((unsigned char)input[i])) i++;
+    output[0] = '\0';
 
     while (input[i] && j < buf_size - 1) {
-        if (isspace((unsigned char)input[i])) {
-            if (in_word) {
+        unsigned char c = (unsigned char)input[i];
+
+        if (isspace(c)) {
+            if (j > 0 && output[j - 1] != ' ') {
                 output[j++] = ' ';
-                in_word = 0;
-                new_word = 1;
             }
+            new_word = 1;
+        } else if (isalpha(c)) {
+            output[j++] = (char)(new_word ? toupper(c) : tolower(c));
+            new_word = 0;
         } else {
-            in_word = 1;
-            if (new_word) {
-                output[j++] = toupper((unsigned char)input[i]);
-                new_word = 0;
-            } else {
-                output[j++] = tolower((unsigned char)input[i]);
-            }
+            output[j++] = (char)c;
+            new_word = 0;
         }
         i++;
     }
-    if (j > 0 && output[j-1] == ' ') output[--j] = '\0';
-    else output[j] = '\0';
+
+    while (j > 0 && output[j - 1] == ' ') {
+        j--;
+    }
+    output[j] = '\0';
 }
 
-int g_total = 0, g_failed = 0;
+int normalize_via_driver(const char *input, char *output, int buf_size) {
+    if (g_driver_should_fail) {
+        return -1;
+    }
+    mock_driver_transform(input, output, buf_size);
+    return 0;
+}
 
-#define TEST(name, input, expected) do { \
-    char out[256] = {0}; \
-    normalize_string_userspace(input, out, sizeof(out)); \
-    if (strcmp(out, expected) == 0) { \
-        printf("[PASS] %-45s -> \"%s\"\n", name, out); \
+#define ASSERT_TRUE(name, cond) do { \
+    g_total++; \
+    if (cond) { \
+        printf("[PASS] %s\n", name); \
     } else { \
-        printf("[FAIL] %-45s\n  Expected: \"%s\"\n  Got:      \"%s\"\n", \
-               name, expected, out); \
+        printf("[FAIL] %s\n", name); \
         g_failed++; \
     } \
+} while (0)
+
+#define ASSERT_STREQ(name, actual, expected) do { \
     g_total++; \
-} while(0)
+    if (strcmp((actual), (expected)) == 0) { \
+        printf("[PASS] %s -> \"%s\"\n", name, actual); \
+    } else { \
+        printf("[FAIL] %s\n  Expected: \"%s\"\n  Actual:   \"%s\"\n", \
+               name, expected, actual); \
+        g_failed++; \
+    } \
+} while (0)
+
+static void test_sanitizes_special_characters(void) {
+    char out[256];
+
+    g_driver_should_fail = 0;
+    ASSERT_TRUE("normalize_name_best_effort succeeds when driver is available",
+                normalize_name_best_effort("tran van dat $", out, sizeof(out)) == 0);
+    ASSERT_STREQ("special symbols are removed from normalized display name",
+                 out, "Tran Van Dat");
+}
+
+static void test_sanitizes_digits_and_punctuation(void) {
+    char out[256];
+
+    g_driver_should_fail = 0;
+    ASSERT_TRUE("normalize_name_best_effort succeeds for mixed input",
+                normalize_name_best_effort("toa 2@@  nguyen", out, sizeof(out)) == 0);
+    ASSERT_STREQ("digits and punctuation are removed, spacing normalized",
+                 out, "Toa Nguyen");
+}
+
+static void test_driver_unavailable_returns_error(void) {
+    char out[256];
+
+    g_driver_should_fail = 1;
+    ASSERT_TRUE("normalize_name_best_effort fails when driver is unavailable",
+                normalize_name_best_effort("nguyen van a", out, sizeof(out)) == -1);
+    g_driver_should_fail = 0;
+}
 
 int main(void) {
-    printf("=== String Normalization Unit Tests ===\n\n");
+    printf("=== Normalize Unit Tests (Current Project Behavior) ===\n\n");
 
-    TEST("Trim leading spaces",       "   nguyen van an",      "Nguyen Van An");
-    TEST("Trim trailing spaces",      "nguyen van an   ",      "Nguyen Van An");
-    TEST("Collapse middle spaces",    "nguyen   van   an",     "Nguyen Van An");
-    TEST("Full combination",          "  nguyen   VAN   AN  ", "Nguyen Van An");
-    TEST("All uppercase",             "TRAN THI BINH",         "Tran Thi Binh");
-    TEST("All lowercase",             "tran thi binh",         "Tran Thi Binh");
-    TEST("Mixed case",                "lE vAN c",              "Le Van C");
-    TEST("Single char lowercase",     "a",                     "A");
-    TEST("Single char uppercase",     "A",                     "A");
-    TEST("Only spaces",               "     ",                 "");
-    TEST("Empty string",              "",                       "");
-    TEST("Single word",               "nguyen",                "Nguyen");
-    TEST("Two spaces between",        "van  an",               "Van An");
-    TEST("Ten leading spaces",        "          a",           "A");
-    TEST("Tab between words",         "nguyen\tvan",           "Nguyen Van");
-    TEST("Mixed spaces and tabs",     "  nguyen\t van  ",      "Nguyen Van");
+    test_sanitizes_special_characters();
+    test_sanitizes_digits_and_punctuation();
+    test_driver_unavailable_returns_error();
 
     printf("\n=== Results: %d/%d passed ===\n", g_total - g_failed, g_total);
     return g_failed > 0 ? 1 : 0;

@@ -258,6 +258,65 @@ int change_password(const char *config_file,
     return 0;  /* Success */
 }
 
+/* ── Admin Reset Password ────────────────────────────────────────────── */
+
+int admin_reset_password(const char *config_file,
+                         const char *username,
+                         const char *new_password) {
+    /* Không cho đổi sang mật khẩu rỗng */
+    if (!new_password || strlen(new_password) == 0)
+        return -2;
+
+    FILE *fp = fopen(config_file, "r");
+    if (!fp) return -3;
+
+    char lines[64][256];
+    int line_count = 0;
+    char new_hash[65];
+    hash_sha256(new_password, new_hash);
+
+    while (line_count < 64 && fgets(lines[line_count], sizeof(lines[0]), fp)) {
+        line_count++;
+    }
+    fclose(fp);
+
+    /* Đảm bảo user có tồn tại */
+    int found = 0;
+    for (int i = 0; i < line_count; i++) {
+        char file_user[64], file_hash[65], file_role[16];
+        if (parse_config_line(lines[i], file_user, sizeof(file_user),
+                              file_hash, sizeof(file_hash),
+                              file_role, sizeof(file_role)) == 0 &&
+            strcmp(username, file_user) == 0) {
+            found = 1;
+            break;
+        }
+    }
+    if (!found) return -4; // User not found
+
+    fp = fopen(config_file, "w");
+    if (!fp) return -3;
+
+    for (int i = 0; i < line_count; i++) {
+        char file_user[64], file_hash[65], file_role[16];
+
+        if (parse_config_line(lines[i], file_user, sizeof(file_user),
+                              file_hash, sizeof(file_hash),
+                              file_role, sizeof(file_role)) != 0) {
+            fputs(lines[i], fp);
+            continue;
+        }
+
+        if (strcmp(file_user, username) == 0) {
+            fprintf(fp, "%s:%s:%s\n", username, new_hash, file_role);
+        } else {
+            fputs(lines[i], fp);
+        }
+    }
+    fclose(fp);
+    return 0;
+}
+
 /* ── Get user role ─────────────────────────────────────────────────── */
 
 int get_user_role(const char *config_file,

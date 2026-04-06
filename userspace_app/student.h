@@ -27,8 +27,14 @@ typedef struct {
     float gpa;
 } Student;
 
+/* Kiểm tra tên chỉ chứa chữ cái và khoảng trắng, không chứa số/ký tự đặc biệt. */
+int  is_valid_name(const char *s);
+
 /* Gửi chuỗi tên xuống /dev/string_norm để chuẩn hóa trong kernel space. */
 int  normalize_via_driver(const char *input, char *output, int buf_size);
+
+/* Chuẩn hóa tên bắt buộc qua kernel driver; trả -1 nếu driver không sẵn sàng. */
+int  normalize_name_best_effort(const char *input, char *output, int buf_size);
 
 /* Thêm một sinh viên mới vào mảng trong RAM sau khi kiểm tra trùng mã. */
 int  add_student(Student *list, int *count, const char *code,

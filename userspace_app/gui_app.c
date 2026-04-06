@@ -13,6 +13,7 @@
 
 #include <gtk/gtk.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
@@ -71,7 +72,9 @@ typedef struct {
     GtkWidget *usb_mount_entry;
     GtkWidget *usb_file_entry;
     GtkWidget *usb_text_view;
-    GtkWidget *usb_status_label;    /* USB mount status indicator */
+    GtkWidget *btn_usb_write;
+    GtkWidget *btn_export_txt;
+    GtkWidget *btn_export_csv;
 
     GtkWidget *sort_combo;
 
@@ -84,53 +87,10 @@ typedef struct {
     GtkWidget *btn_delete;
     GtkWidget *btn_save;
     GtkWidget *btn_manage_users;     /* sidebar button, hidden for viewer */
+    GtkWidget *form_card;            /* hidden for viewer */
 
     GtkWidget *topbar_user_label;    /* shows "user (role)" on topbar */
 } AppState;
-
-/* ── USB mount status checker ──────────────────────────────────────────── */
-
-static int is_path_mounted(const char *path) {
-    if (!path || path[0] == '\0') return 0;
-    FILE *fp = fopen("/proc/mounts", "r");
-    if (!fp) return 0;
-    char line[512];
-    while (fgets(line, sizeof(line), fp)) {
-        char dev[256], mnt[256];
-        if (sscanf(line, "%255s %255s", dev, mnt) >= 2) {
-            if (strcmp(mnt, path) == 0) {
-                fclose(fp);
-                return 1;
-            }
-        }
-    }
-    fclose(fp);
-    return 0;
-}
-
-/*
- * Tick định kỳ để GUI tự phản ánh trạng thái mount của đường dẫn USB mà
- * người dùng đang nhập. Đây là kiểm tra ở user space dựa trên /proc/mounts,
- * không liên quan trực tiếp đến usb_driver kernel module.
- */
-static gboolean on_usb_status_tick(gpointer user_data) {
-    AppState *app = (AppState *)user_data;
-    if (!app->usb_status_label) return G_SOURCE_CONTINUE;
-
-    const char *mount_path = gtk_entry_get_text(GTK_ENTRY(app->usb_mount_entry));
-
-    if (mount_path && mount_path[0] != '\0' && is_path_mounted(mount_path)) {
-        gtk_label_set_markup(GTK_LABEL(app->usb_status_label),
-            "<span foreground='#51cf66' font_weight='bold'>●  USB \304\221\303\243 mount</span>");
-    } else if (mount_path && mount_path[0] != '\0') {
-        gtk_label_set_markup(GTK_LABEL(app->usb_status_label),
-            "<span foreground='#ff6b6b' font_weight='bold'>○  Ch\306\260a mount</span>");
-    } else {
-        gtk_label_set_markup(GTK_LABEL(app->usb_status_label),
-            "<span foreground='#868e96'>○  Nh\341\272\255p \304\221\306\260\341\273\235ng d\341\272\253n USB</span>");
-    }
-    return G_SOURCE_CONTINUE;
-}
 
 /* ── Validation helpers ────────────────────────────────────────────────── */
 
@@ -146,6 +106,15 @@ static int is_valid_code(const char *s) {
     if (!s || s[0] == '\0') return 0;
     while (*s) {
         if (!isalnum((unsigned char)*s)) return 0;
+        s++;
+    }
+    return 1;
+}
+
+static int is_valid_class(const char *s) {
+    if (!s || s[0] == '\0') return 0;
+    while (*s) {
+        if (!isspace((unsigned char)*s) && !isalnum((unsigned char)*s)) return 0;
         s++;
     }
     return 1;
@@ -402,10 +371,38 @@ static void on_login_clicked(GtkButton *btn, gpointer user_data) {
      * viewer vẫn xem danh sách được, nhưng các nút thay đổi dữ liệu bị khóa.
      */
     int is_admin = (strcmp(role, ROLE_ADMIN) == 0);
-    if (app->btn_add)    gtk_widget_set_sensitive(app->btn_add,    is_admin);
-    if (app->btn_edit)   gtk_widget_set_sensitive(app->btn_edit,   is_admin);
-    if (app->btn_delete) gtk_widget_set_sensitive(app->btn_delete, is_admin);
-    if (app->btn_save)   gtk_widget_set_sensitive(app->btn_save,   is_admin);
+    if (app->btn_add) {
+        gtk_widget_set_visible(app->btn_add, is_admin);
+        gtk_widget_set_no_show_all(app->btn_add, !is_admin);
+    }
+    if (app->btn_edit) {
+        gtk_widget_set_visible(app->btn_edit, is_admin);
+        gtk_widget_set_no_show_all(app->btn_edit, !is_admin);
+    }
+    if (app->btn_delete) {
+        gtk_widget_set_visible(app->btn_delete, is_admin);
+        gtk_widget_set_no_show_all(app->btn_delete, !is_admin);
+    }
+    if (app->btn_save) {
+        gtk_widget_set_visible(app->btn_save, is_admin);
+        gtk_widget_set_no_show_all(app->btn_save, !is_admin);
+    }
+    if (app->form_card) {
+        gtk_widget_set_visible(app->form_card, is_admin);
+        gtk_widget_set_no_show_all(app->form_card, !is_admin);
+    }
+    if (app->btn_usb_write) {
+        gtk_widget_set_visible(app->btn_usb_write, is_admin);
+        gtk_widget_set_no_show_all(app->btn_usb_write, !is_admin);
+    }
+    if (app->btn_export_txt) {
+        gtk_widget_set_visible(app->btn_export_txt, TRUE);
+        gtk_widget_set_no_show_all(app->btn_export_txt, FALSE);
+    }
+    if (app->btn_export_csv) {
+        gtk_widget_set_visible(app->btn_export_csv, TRUE);
+        gtk_widget_set_no_show_all(app->btn_export_csv, FALSE);
+    }
     if (app->btn_manage_users) {
         gtk_widget_set_visible(app->btn_manage_users, is_admin);
         gtk_widget_set_no_show_all(app->btn_manage_users, !is_admin);
@@ -438,8 +435,15 @@ static void on_add_clicked(GtkButton *btn, gpointer user_data) {
         set_status(app, "Ngày sinh phải đúng định dạng dd/mm/yyyy");
         return;
     }
-    if (sscanf(gpa_str, "%f", &gpa) != 1 || gpa < 0.0f || gpa > 4.0f) {
-        set_status(app, "GPA phải nằm trong khoảng [0.0 – 4.0]");
+    if (!is_valid_name(name)) {
+        set_status(app, "Họ tên không được chứa số hoặc ký tự đặc biệt");
+        return;
+    }
+    char *endptr;
+    gpa = strtof(gpa_str, &endptr);
+    while (endptr && *endptr && isspace((unsigned char)*endptr)) endptr++;
+    if (!endptr || endptr == gpa_str || *endptr != '\0' || gpa < 0.0f || gpa > 4.0f) {
+        set_status(app, "GPA phải là số thập phân hợp lệ nằm trong khoảng [0.0 – 4.0]");
         return;
     }
 
@@ -453,7 +457,7 @@ static void on_add_clicked(GtkButton *btn, gpointer user_data) {
         log_audit(app->logged_in_user, "Added student: %s", code);
         clear_form(app);
     } else {
-        set_status(app, "Them that bai: ma %s co the da ton tai", code);
+        set_status(app, "Them that bai: ma %s da ton tai hoac driver string_norm chua san sang", code);
     }
 }
 
@@ -546,10 +550,16 @@ static void on_load_clicked(GtkButton *btn, gpointer user_data) {
      * load_from_file() thay thế toàn bộ danh sách trong RAM,
      * nên sau khi load phải refresh lại TreeView.
      */
-    if (load_from_file(target, app->list, &app->count) == 0) {
+    int rc = load_from_file(target, app->list, &app->count);
+    if (rc == 0) {
         refresh_main_table(app);
         set_status(app, "Đã tải %d sinh viên từ: %s", app->count, target);
         log_audit(app->logged_in_user, "Loaded data from file: %s", target);
+    } else if (rc == -2) {
+        set_status(app, "Từ chối tải file: sai định dạng (text app hoặc CSV Excel) hoặc vi phạm nghiệp vụ");
+        log_audit(app->logged_in_user,
+                  "Rejected import file (invalid format or business rules): %s",
+                  target);
     } else {
         set_status(app, "Tai that bai: %s", target);
     }
@@ -632,6 +642,7 @@ static void on_export_csv_clicked(GtkButton *btn, gpointer user_data) {
                                       NULL);
                                       
     gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "danh_sach.csv");
+    gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
     
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         char *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
@@ -649,28 +660,34 @@ static void on_export_csv_clicked(GtkButton *btn, gpointer user_data) {
 static void on_export_usb_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     AppState *app = (AppState *)user_data;
-    const char *mount_path = gtk_entry_get_text(GTK_ENTRY(app->usb_mount_entry));
-    const char *file_name  = gtk_entry_get_text(GTK_ENTRY(app->usb_file_entry));
-    char full_path[512];
+    GtkWidget *dialog;
 
-    if (is_blank(mount_path) || is_blank(file_name)) {
-        set_status(app, "Duong dan USB hoac ten file khong duoc de trong");
-        return;
-    }
     if (!confirm_action(app, "Xac nhan xuat",
                         "Xuat toan bo danh sach hien tai ra USB?"))
         return;
 
-    /*
-     * Luồng export TXT ra USB thực chất chỉ là save_to_file() với đích là
-     * một đường dẫn nằm trong thư mục mount của thiết bị USB.
-     */
-    snprintf(full_path, sizeof(full_path), "%s/%s", mount_path, file_name);
-    if (save_to_file(full_path, app->list, app->count) == 0) {
-        set_status(app, "Đã xuất danh sách (%d SV) vào %s", app->count, full_path);
-        log_audit(app->logged_in_user, "Exported TXT to USB: %s", full_path);
-    } else
-        set_status(app, "Xuat that bai: %s", full_path);
+    dialog = gtk_file_chooser_dialog_new("Lưu File Text",
+                                         GTK_WINDOW(app->window),
+                                         GTK_FILE_CHOOSER_ACTION_SAVE,
+                                         "Hủy", GTK_RESPONSE_CANCEL,
+                                         "Xuất", GTK_RESPONSE_ACCEPT,
+                                         NULL);
+
+    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "danh_sach.txt");
+    gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        char *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        if (save_to_file(filename, app->list, app->count) == 0) {
+            set_status(app, "Đã xuất báo cáo Text: %s", filename);
+            log_audit(app->logged_in_user, "Exported TXT: %s", filename);
+        } else {
+            set_status(app, "Lỗi khi xuất Text!");
+        }
+        g_free(filename);
+    }
+
+    gtk_widget_destroy(dialog);
 }
 
 static void on_browse_file_clicked(GtkButton *btn, gpointer user_data) {
@@ -826,20 +843,60 @@ static void on_edit_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     AppState *app = (AppState *)user_data;
     char code[MAX_CODE_LEN] = {0};
+    char selected_code[MAX_CODE_LEN] = {0};
+    char new_code[MAX_CODE_LEN] = {0};
     const char *name         = gtk_entry_get_text(GTK_ENTRY(app->name_entry));
+    const char *code_input   = gtk_entry_get_text(GTK_ENTRY(app->code_entry));
     const char *student_class = gtk_entry_get_text(GTK_ENTRY(app->class_entry));
     const char *dob          = gtk_entry_get_text(GTK_ENTRY(app->dob_entry));
     const char *gpa_str      = gtk_entry_get_text(GTK_ENTRY(app->gpa_entry));
     float gpa = -1.0f;
+    int has_selected = get_selected_code(app, selected_code, sizeof(selected_code));
 
-    if (!get_selected_code(app, code, sizeof(code))) {
-        const char *entry_code = gtk_entry_get_text(GTK_ENTRY(app->code_entry));
-        if (is_blank(entry_code)) {
+    if (!has_selected) {
+        if (is_blank(code_input)) {
             set_status(app, "Hay chon mot dong hoac nhap Ma SV de sua");
             return;
         }
-        strncpy(code, entry_code, sizeof(code) - 1);
+        if (!is_valid_code(code_input)) {
+            set_status(app, "Mã sinh viên không hợp lệ (chỉ dùng chữ và số)");
+            return;
+        }
+        normalize_code_key(code_input, code, sizeof(code));
+    } else {
+        strncpy(code, selected_code, sizeof(code) - 1);
         code[sizeof(code) - 1] = '\0';
+    }
+
+    if (is_blank(code_input)) {
+        strncpy(new_code, code, sizeof(new_code) - 1);
+        new_code[sizeof(new_code) - 1] = '\0';
+    } else {
+        if (!is_valid_code(code_input)) {
+            set_status(app, "Mã sinh viên mới không hợp lệ (chỉ dùng chữ và số)");
+            return;
+        }
+        normalize_code_key(code_input, new_code, sizeof(new_code));
+    }
+
+    if (!is_blank(student_class) && !is_valid_class(student_class)) {
+        set_status(app, "Lớp không hợp lệ (chỉ cho phép chữ, số và khoảng trắng)");
+        return;
+    }
+
+    if (!is_blank(dob) && !is_valid_dob(dob)) {
+        set_status(app, "Ngày sinh phải đúng định dạng dd/mm/yyyy");
+        return;
+    }
+
+    if (!is_blank(gpa_str)) {
+        char *endptr;
+        gpa = strtof(gpa_str, &endptr);
+        while (endptr && *endptr && isspace((unsigned char)*endptr)) endptr++;
+        if (!endptr || endptr == gpa_str || *endptr != '\0' || gpa < 0.0f || gpa > 4.0f) {
+            set_status(app, "GPA phải là số thập phân hợp lệ nằm trong khoảng [0.0 - 4.0]");
+            return;
+        }
     }
 
     /*
@@ -849,13 +906,32 @@ static void on_edit_clicked(GtkButton *btn, gpointer user_data) {
     for (int i = 0; i < app->count; i++) {
         Student *s = &app->list[i];
         if (strcmp(s->student_code, code) == 0) {
+            if (strcmp(new_code, code) != 0) {
+                for (int j = 0; j < app->count; j++) {
+                    if (j != i && strcmp(app->list[j].student_code, new_code) == 0) {
+                        set_status(app, "Mã sinh viên mới bị trùng: %s", new_code);
+                        return;
+                    }
+                }
+                strncpy(s->student_code, new_code, MAX_CODE_LEN - 1);
+                s->student_code[MAX_CODE_LEN - 1] = '\0';
+            }
+
             if (!is_blank(name)) {
+                if (!is_valid_name(name)) {
+                    set_status(app, "Họ tên không được chứa số hoặc ký tự đặc biệt");
+                    return;
+                }
                 strncpy(s->raw_name, name, MAX_NAME_LEN - 1);
                 s->raw_name[MAX_NAME_LEN - 1] = '\0';
                 /* Giữ cùng quy ước chuẩn hóa tên như lúc thêm mới. */
-                if (normalize_via_driver(name, s->normalized_name, MAX_NAME_LEN) < 0) {
-                    strncpy(s->normalized_name, name, MAX_NAME_LEN - 1);
-                    s->normalized_name[MAX_NAME_LEN - 1] = '\0';
+                if (normalize_name_best_effort(name, s->normalized_name, MAX_NAME_LEN) < 0) {
+                    set_status(app, "Sua that bai: driver string_norm chua san sang");
+                    return;
+                }
+                if (is_blank(s->normalized_name)) {
+                    set_status(app, "Họ tên không hợp lệ sau chuẩn hóa");
+                    return;
                 }
             }
             if (!is_blank(student_class)) {
@@ -866,18 +942,16 @@ static void on_edit_clicked(GtkButton *btn, gpointer user_data) {
                 }
                 s->student_class[j] = '\0';
             }
-            if (!is_blank(dob) && is_valid_dob(dob)) {
+            if (!is_blank(dob)) {
                 strncpy(s->dob, dob, MAX_DOB_LEN - 1);
                 s->dob[MAX_DOB_LEN - 1] = '\0';
             }
-            if (!is_blank(gpa_str) &&
-                sscanf(gpa_str, "%f", &gpa) == 1 &&
-                gpa >= 0.0f && gpa <= 4.0f)
+            if (!is_blank(gpa_str))
                 s->gpa = gpa;
 
             refresh_main_table(app);
-            set_status(app, "Đã cập nhật sinh viên: %s", code);
-            log_audit(app->logged_in_user, "Updated student: %s", code);
+            set_status(app, "Đã cập nhật sinh viên: %s", s->student_code);
+            log_audit(app->logged_in_user, "Updated student: %s -> %s", code, s->student_code);
             return;
         }
     }
@@ -1053,6 +1127,28 @@ static void on_mu_del_clicked(GtkButton *btn, gpointer data) {
     }
 }
 
+static void on_mu_reset_clicked(GtkButton *btn, gpointer data) {
+    (void)btn;
+    ManageUsersState *st = (ManageUsersState *)data;
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(st->tree));
+    GtkTreeModel *model;
+    GtkTreeIter iter;
+    if (gtk_tree_selection_get_selected(sel, &model, &iter)) {
+        gchar *u;
+        gtk_tree_model_get(model, &iter, 0, &u, -1);
+        const char *new_p = gtk_entry_get_text(GTK_ENTRY(st->pass_entry));
+        
+        if (new_p[0]) {
+            int ret = admin_reset_password("config.txt", u, new_p);
+            if (ret == 0) {
+                log_audit(st->app->logged_in_user, "Reset password for user: %s", u);
+                refresh_user_list(st);
+            }
+        }
+        g_free(u);
+    }
+}
+
 static void on_manage_users_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     AppState *app = (AppState *)user_data;
@@ -1090,18 +1186,22 @@ static void on_manage_users_clicked(GtkButton *btn, gpointer user_data) {
     gtk_combo_box_set_active(GTK_COMBO_BOX(st->role_combo), 0);
 
     GtkWidget *btn_add = gtk_button_new_with_label("Thêm");
+    GtkWidget *btn_reset = gtk_button_new_with_label("Đổi pass");
     GtkWidget *btn_del = gtk_button_new_with_label("Xóa chọn");
 
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_add), "primary-btn");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_reset), "secondary-btn");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_del), "danger-btn");
 
     g_signal_connect(btn_add, "clicked", G_CALLBACK(on_mu_add_clicked), st);
+    g_signal_connect(btn_reset, "clicked", G_CALLBACK(on_mu_reset_clicked), st);
     g_signal_connect(btn_del, "clicked", G_CALLBACK(on_mu_del_clicked), st);
 
     gtk_box_pack_start(GTK_BOX(hbox), st->user_entry, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(hbox), st->pass_entry, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(hbox), st->role_combo, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox), btn_add, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), btn_reset, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox), btn_del, FALSE, FALSE, 0);
     
     gtk_box_pack_start(GTK_BOX(content), hbox, FALSE, FALSE, 0);
@@ -1299,6 +1399,7 @@ static GtkWidget *build_dashboard_view(AppState *app) {
 
     /* ── Form card ──────────────────────────────────────────────────── */
     GtkWidget *form_card = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    app->form_card = form_card;
     gtk_style_context_add_class(gtk_widget_get_style_context(form_card), "form-card");
 
     GtkWidget *form_header = gtk_label_new("THÔNG TIN SINH VIÊN");
@@ -1365,15 +1466,17 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_box_pack_end  (GTK_BOX(usb_fields), btn_browse_usb_file, FALSE, FALSE, 0);
 
     GtkWidget *usb_btn_row   = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *btn_usb_write = gtk_button_new_with_label("Ghi USB");
+    app->btn_usb_write = gtk_button_new_with_label("Ghi USB");
     GtkWidget *btn_usb_read  = gtk_button_new_with_label("Đọc USB");
-    GtkWidget *btn_export    = gtk_button_new_with_label("Lưu USB (.txt)");
+    GtkWidget *btn_export    = gtk_button_new_with_label("Xuất Text (.txt)");
     GtkWidget *btn_export_csv = gtk_button_new_with_label("Xuất Excel (.csv)");
+    app->btn_export_txt = btn_export;
+    app->btn_export_csv = btn_export_csv;
 
-    gtk_style_context_add_class(gtk_widget_get_style_context(btn_usb_write), "secondary-btn");
+    gtk_style_context_add_class(gtk_widget_get_style_context(app->btn_usb_write), "secondary-btn");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_export_csv), "primary-btn");
 
-    gtk_box_pack_start(GTK_BOX(usb_btn_row), btn_usb_write, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(usb_btn_row), app->btn_usb_write, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(usb_btn_row), btn_usb_read,  FALSE, FALSE, 0);
     gtk_box_pack_end  (GTK_BOX(usb_btn_row), btn_export_csv,FALSE, FALSE, 0);
     gtk_box_pack_end  (GTK_BOX(usb_btn_row), btn_export,    FALSE, FALSE, 0);
@@ -1384,19 +1487,10 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_widget_set_size_request(usb_scroll, -1, 80);
     gtk_container_add(GTK_CONTAINER(usb_scroll), app->usb_text_view);
 
-    /* USB mount status indicator */
-    app->usb_status_label = gtk_label_new("");
-    gtk_widget_set_halign(app->usb_status_label, GTK_ALIGN_START);
-
     gtk_box_pack_start(GTK_BOX(usb_outer), usb_fields,            FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(usb_outer), app->usb_status_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(usb_outer), usb_btn_row,           FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(usb_outer), usb_scroll,            FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(usb_expander), usb_outer);
-
-    /* Start USB mount monitor (every 2 seconds) */
-    g_timeout_add_seconds(2, on_usb_status_tick, app);
-    on_usb_status_tick(app);  /* Initial check */
 
     /* ── Status bar ─────────────────────────────────────────────────── */
     app->status_label = gtk_label_new("Sẵn sàng");
@@ -1434,7 +1528,7 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     g_signal_connect(btn_load,        "clicked", G_CALLBACK(on_load_clicked),   app);
     g_signal_connect(btn_browse_file, "clicked", G_CALLBACK(on_browse_file_clicked), app);
 
-    g_signal_connect(btn_usb_write,        "clicked", G_CALLBACK(on_usb_write_clicked),        app);
+    g_signal_connect(app->btn_usb_write,   "clicked", G_CALLBACK(on_usb_write_clicked),        app);
     g_signal_connect(btn_usb_read,         "clicked", G_CALLBACK(on_usb_read_clicked),         app);
     g_signal_connect(btn_export,           "clicked", G_CALLBACK(on_export_usb_clicked),       app);
     g_signal_connect(btn_export_csv,       "clicked", G_CALLBACK(on_export_csv_clicked),       app);

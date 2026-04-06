@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <strings.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/file.h>
@@ -51,6 +52,56 @@ int normalize_via_driver(const char *input, char *output, int buf_size) {
 }
 #endif
 
+static void sanitize_name_alpha_space(const char *input, char *output, int buf_size) {
+    int out_i = 0;
+    int in_word = 0;
+
+    if (!output || buf_size <= 0) return;
+    output[0] = '\0';
+    if (!input) return;
+
+    while (*input && out_i < buf_size - 1) {
+        unsigned char c = (unsigned char)*input;
+
+        if (isspace(c)) {
+            if (in_word && out_i < buf_size - 1) {
+                output[out_i++] = ' ';
+            }
+            in_word = 0;
+        } else if (isalpha(c)) {
+            if (!in_word) {
+                output[out_i++] = (char)toupper(c);
+                in_word = 1;
+            } else {
+                output[out_i++] = (char)tolower(c);
+            }
+        } else {
+            /* Drop digits and punctuation so names cannot keep special symbols. */
+        }
+        input++;
+    }
+
+    while (out_i > 0 && output[out_i - 1] == ' ') {
+        out_i--;
+    }
+    output[out_i] = '\0';
+}
+
+int normalize_name_best_effort(const char *input, char *output, int buf_size) {
+    char driver_out[MAX_NAME_LEN];
+
+    if (!output || buf_size <= 0) return -1;
+
+    if (normalize_via_driver(input, driver_out, sizeof(driver_out)) < 0) {
+        return -1;
+    } else {
+        /* Driver output is still filtered to reject punctuation in display name. */
+        sanitize_name_alpha_space(driver_out, output, buf_size);
+    }
+
+    return 0;
+}
+
 /* Dùng để phân biệt chuỗi rỗng thật sự với chuỗi chỉ toàn khoảng trắng. */
 static int is_blank_string(const char *s) {
     if (!s) return 1;
@@ -61,11 +112,31 @@ static int is_blank_string(const char *s) {
     return 1;
 }
 
+int is_valid_name(const char *s) {
+    if (!s || s[0] == '\0') return 0;
+    while (*s) {
+        if (!isalpha((unsigned char)*s) && !isspace((unsigned char)*s)) {
+            return 0;
+        }
+        s++;
+    }
+    return 1;
+}
+
 static int is_valid_load_code(const char *s) {
     /* Mã sinh viên chỉ chấp nhận chữ và số để tránh ký tự lạ trong file dữ liệu. */
     if (!s || s[0] == '\0') return 0;
     while (*s) {
         if (!isalnum((unsigned char)*s)) return 0;
+        s++;
+    }
+    return 1;
+}
+
+static int is_valid_load_class(const char *s) {
+    if (!s || s[0] == '\0') return 0;
+    while (*s) {
+        if (!isspace((unsigned char)*s) && !isalnum((unsigned char)*s)) return 0;
         s++;
     }
     return 1;
@@ -107,6 +178,58 @@ static void normalize_field_upper_no_space(char *dest, const char *src, int max_
     dest[j] = '\0';
 }
 
+static void trim_inplace(char *s) {
+    char *start;
+    char *end;
+
+    if (!s) return;
+
+    start = s;
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+
+    if (start != s) {
+        memmove(s, start, strlen(start) + 1);
+    }
+
+    end = s + strlen(s);
+    while (end > s && isspace((unsigned char)end[-1])) {
+        end--;
+    }
+    *end = '\0';
+}
+
+static void strip_utf8_bom(char *s) {
+    if (!s) return;
+    if ((unsigned char)s[0] == 0xEF &&
+        (unsigned char)s[1] == 0xBB &&
+        (unsigned char)s[2] == 0xBF) {
+        memmove(s, s + 3, strlen(s + 3) + 1);
+    }
+}
+
+static int split_fixed_fields(char *line, char delimiter, char **fields, int expected) {
+    int count = 0;
+    char *p = line;
+
+    if (!line || !fields || expected <= 0) return -1;
+
+    fields[count++] = p;
+    while (*p) {
+        if (*p == delimiter) {
+            *p = '\0';
+            if (count >= expected) {
+                return -1;
+            }
+            fields[count++] = p + 1;
+        }
+        p++;
+    }
+
+    return (count == expected) ? 0 : -1;
+}
+
 /* ========== CRUD ========== */
 
 int add_student(Student *list, int *count, const char *code,
@@ -134,18 +257,18 @@ int add_student(Student *list, int *count, const char *code,
     /* Mã sinh viên luôn được đưa về dạng in hoa, không khoảng trắng. */
     normalize_field_upper_no_space(s->student_code, code, MAX_CODE_LEN);
 
+    if (!is_valid_name(raw_name)) {
+        printf("ERROR: Name contains invalid characters\n");
+        return -1;
+    }
+
     /* Giữ nguyên raw_name để còn phục vụ hiển thị / export khi cần. */
     strncpy(s->raw_name, raw_name, MAX_NAME_LEN - 1);
     s->raw_name[MAX_NAME_LEN - 1] = '\0';
 
-    /*
-     * Tên hiển thị ưu tiên đi qua driver.
-     * Nếu driver chưa load hoặc giao tiếp lỗi, hệ thống vẫn tiếp tục hoạt động
-     * bằng cách dùng chuỗi gốc như một cơ chế fallback mềm.
-     */
-    if (normalize_via_driver(raw_name, s->normalized_name, MAX_NAME_LEN) < 0) {
-        strncpy(s->normalized_name, raw_name, MAX_NAME_LEN - 1);
-        s->normalized_name[MAX_NAME_LEN - 1] = '\0';
+    if (normalize_name_best_effort(raw_name, s->normalized_name, MAX_NAME_LEN) < 0) {
+        printf("ERROR: Cannot normalize name via kernel driver\n");
+        return -1;
     }
 
     /* Lớp học cũng được đưa về dạng "không khoảng trắng + in hoa". */
@@ -235,11 +358,15 @@ int edit_student(Student *list, int count, const char *code) {
     if (fgets(buf, sizeof(buf), stdin)) {
         buf[strcspn(buf, "\n")] = '\0';
         if (!is_blank_string(buf)) {
+            if (!is_valid_name(buf)) {
+                printf("ERROR: Name contains invalid characters\n");
+                return -1;
+            }
             strncpy(s->raw_name, buf, MAX_NAME_LEN - 1);
             s->raw_name[MAX_NAME_LEN - 1] = '\0';
-            if (normalize_via_driver(buf, s->normalized_name, MAX_NAME_LEN) < 0) {
-                strncpy(s->normalized_name, buf, MAX_NAME_LEN - 1);
-                s->normalized_name[MAX_NAME_LEN - 1] = '\0';
+            if (normalize_name_best_effort(buf, s->normalized_name, MAX_NAME_LEN) < 0) {
+                printf("ERROR: Cannot normalize name via kernel driver\n");
+                return -1;
             }
         }
     }
@@ -273,16 +400,21 @@ int edit_student(Student *list, int count, const char *code) {
         buf[strcspn(buf, "\n")] = '\0';
         if (buf[0] == '\0') break; /* Giu nguyen */
 
-        float new_gpa;
-        if (sscanf(buf, "%f", &new_gpa) == 1) {
-            if (new_gpa >= 0.0f && new_gpa <= 4.0f) {
-                s->gpa = new_gpa;
-                break;
-            }
-            printf("Error: GPA phai nam trong khoang 0.0 den 4.0. Vui long nhap lai.\n");
-        } else {
-            printf("Error: GPA khong hop le. Vui long nhap so thuc.\n");
+        char *endptr;
+        float new_gpa = strtof(buf, &endptr);
+        while (endptr && *endptr && isspace((unsigned char)*endptr)) {
+            endptr++;
         }
+        if (!endptr || endptr == buf || *endptr != '\0') {
+            printf("Error: GPA khong hop le. Vui long nhap so thuc.\n");
+            continue;
+        }
+
+        if (new_gpa >= 0.0f && new_gpa <= 4.0f) {
+            s->gpa = new_gpa;
+            break;
+        }
+        printf("Error: GPA phai nam trong khoang 0.0 den 4.0. Vui long nhap lai.\n");
     }
 
     printf("Student [%s] updated successfully.\n", s->student_code);
@@ -398,6 +530,8 @@ int load_from_file(const char *filename, Student *list, int *count) {
      */
     FILE *fp = fopen(filename, "r");
     char line[512];
+    Student temp[MAX_STUDENTS];
+    int temp_count = 0;
 
     if (!fp)
         return -1;
@@ -406,71 +540,107 @@ int load_from_file(const char *filename, Student *list, int *count) {
      * Khi load, danh sách cũ trong RAM bị thay thế hoàn toàn.
      * Đây là lý do GUI phải xác nhận trước khi tải nếu đang có dữ liệu.
      */
-    *count = 0;
-    while (fgets(line, sizeof(line), fp) && *count < MAX_STUDENTS) {
-        /* Bỏ qua comment và dòng trống để file có thể đọc được cả khi người dùng ghi chú tay. */
-        if (line[0] == '#' || line[0] == '\n')
-            continue;
-
-        Student *s = &list[*count];
+    while (fgets(line, sizeof(line), fp)) {
+        char *fields[5];
+        char delimiter = '\0';
         char code_buf[MAX_CODE_LEN];
         char name_buf[MAX_NAME_LEN];
         char class_buf[MAX_CLASS_LEN];
         char dob_buf[MAX_DOB_LEN];
         float gpa_val;
+        char *gpa_end = NULL;
 
-        /*
-         * Tách 5 cột bằng sscanf theo dấu '|'.
-         * Nếu không đọc đủ 5 trường, dòng đó bị coi là lỗi format.
-         */
-        if (sscanf(line, "%19[^|]|%255[^|]|%19[^|]|%14[^|]|%f",
-                   code_buf, name_buf, class_buf, dob_buf, &gpa_val) == 5) {
+        line[strcspn(line, "\r\n")] = '\0';
+        strip_utf8_bom(line);
+        trim_inplace(line);
 
-            /*
-             * 1. Lọc dữ liệu lỗi / bẩn ngay khi nhập từ file.
-             *    Dòng nào sai format hoặc GPA/DOB không hợp lệ sẽ bị bỏ qua.
-             */
-            if (!is_valid_load_code(code_buf)) continue;
-            if (is_blank_string(name_buf)) continue;
-            if (is_blank_string(class_buf)) continue;
-            if (!is_valid_load_dob(dob_buf)) continue;
-            if (gpa_val < 0.0f || gpa_val > 4.0f) continue;
+        /* Bỏ qua comment và dòng trống để file có thể đọc được cả khi người dùng ghi chú tay. */
+        if (line[0] == '#' || line[0] == '\0')
+            continue;
 
-            normalize_field_upper_no_space(s->student_code, code_buf, MAX_CODE_LEN);
-
-            /*
-             * 2. Chống trùng mã sinh viên ngay trong quá trình load.
-             *    Nếu file bị sửa tay và có nhiều dòng cùng mã, chỉ giữ dòng đầu tiên hợp lệ.
-             */
-            int is_dup = 0;
-            for (int i = 0; i < *count; i++) {
-                if (strcmp(list[i].student_code, s->student_code) == 0) {
-                    is_dup = 1;
-                    break;
-                }
-            }
-            if (is_dup) continue; /* Skip malformed duplicate line */
-
-            /*
-             * Khi load lại từ file, name_buf đang được coi là "tên đã chuẩn hóa"
-             * vì save_to_file() đã lưu normalized_name chứ không lưu raw_name gốc.
-             */
-            strncpy(s->normalized_name, name_buf, MAX_NAME_LEN - 1);
-            s->normalized_name[MAX_NAME_LEN - 1] = '\0';
-
-            strncpy(s->raw_name, name_buf, MAX_NAME_LEN - 1);
-            s->raw_name[MAX_NAME_LEN - 1] = '\0';
-
-            normalize_field_upper_no_space(s->student_class, class_buf, MAX_CLASS_LEN);
-
-            strncpy(s->dob, dob_buf, MAX_DOB_LEN - 1);
-            s->dob[MAX_DOB_LEN - 1] = '\0';
-
-            s->gpa = gpa_val;
-            (*count)++;
+        if (temp_count >= MAX_STUDENTS) {
+            fclose(fp);
+            return -2;
         }
+
+        if (strchr(line, '|')) {
+            delimiter = '|';
+        } else if (strchr(line, ',')) {
+            delimiter = ',';
+        } else {
+            fclose(fp);
+            return -2;
+        }
+
+        if (split_fixed_fields(line, delimiter, fields, 5) != 0) {
+            fclose(fp);
+            return -2;
+        }
+
+        for (int i = 0; i < 5; i++) {
+            trim_inplace(fields[i]);
+        }
+
+        if (delimiter == ',' && strcasecmp(fields[4], "GPA") == 0) {
+            continue;
+        }
+
+        if (snprintf(code_buf, sizeof(code_buf), "%s", fields[0]) >= (int)sizeof(code_buf) ||
+            snprintf(name_buf, sizeof(name_buf), "%s", fields[1]) >= (int)sizeof(name_buf) ||
+            snprintf(class_buf, sizeof(class_buf), "%s", fields[2]) >= (int)sizeof(class_buf) ||
+            snprintf(dob_buf, sizeof(dob_buf), "%s", fields[3]) >= (int)sizeof(dob_buf)) {
+            fclose(fp);
+            return -2;
+        }
+
+        gpa_val = strtof(fields[4], &gpa_end);
+        while (gpa_end && *gpa_end && isspace((unsigned char)*gpa_end)) {
+            gpa_end++;
+        }
+        if (!gpa_end || gpa_end == fields[4] || *gpa_end != '\0') {
+            fclose(fp);
+            return -2;
+        }
+
+        Student *s = &temp[temp_count];
+
+        /* Strict mode: chỉ cần 1 dòng sai là từ chối toàn bộ file. */
+        if (!is_valid_load_code(code_buf) ||
+            !is_valid_name(name_buf) ||
+            !is_valid_load_class(class_buf) ||
+            !is_valid_load_dob(dob_buf) ||
+            gpa_val < 0.0f || gpa_val > 4.0f) {
+            fclose(fp);
+            return -2;
+        }
+
+        normalize_field_upper_no_space(s->student_code, code_buf, MAX_CODE_LEN);
+
+        for (int i = 0; i < temp_count; i++) {
+            if (strcmp(temp[i].student_code, s->student_code) == 0) {
+                fclose(fp);
+                return -2;
+            }
+        }
+
+        strncpy(s->raw_name, name_buf, MAX_NAME_LEN - 1);
+        s->raw_name[MAX_NAME_LEN - 1] = '\0';
+        if (normalize_name_best_effort(name_buf, s->normalized_name, MAX_NAME_LEN) < 0) {
+            fclose(fp);
+            return -2;
+        }
+
+        normalize_field_upper_no_space(s->student_class, class_buf, MAX_CLASS_LEN);
+
+        strncpy(s->dob, dob_buf, MAX_DOB_LEN - 1);
+        s->dob[MAX_DOB_LEN - 1] = '\0';
+        s->gpa = gpa_val;
+        temp_count++;
     }
     fclose(fp);
+
+    memcpy(list, temp, sizeof(Student) * (size_t)temp_count);
+    *count = temp_count;
 
     printf("Loaded %d students from %s\n", *count, filename);
     return 0;

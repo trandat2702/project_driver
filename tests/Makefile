@@ -4,14 +4,14 @@ CFLAGS = -Wall -g -Wno-deprecated-declarations
 all: build_mock build_auth build_student build_integration
 
 build_mock:
-	$(CC) $(CFLAGS) \
+	$(CC) $(CFLAGS) -DUNIT_TESTING -I../userspace_app \
 	    -o userspace_tests/test_normalize_mock \
-	    userspace_tests/test_normalize_mock.c
+	    userspace_tests/test_normalize_mock.c ../userspace_app/student.c
 
 build_auth:
-	$(CC) $(CFLAGS) \
+	$(CC) $(CFLAGS) -DUNIT_TESTING -I../userspace_app \
 	    -o userspace_tests/test_auth \
-	    userspace_tests/test_auth.c -lssl -lcrypto
+	    userspace_tests/test_auth.c ../userspace_app/auth.c -lssl -lcrypto
 
 build_student:
 	$(CC) $(CFLAGS) -DUNIT_TESTING -I../userspace_app \

@@ -37,6 +37,11 @@ int  change_password(const char *config_file,
                      const char *old_password,
                      const char *new_password);
 
+/* Cấp lại mật khẩu mới cho user (bỏ qua kiểm tra pass cũ, chỉ dành cho Admin). */
+int  admin_reset_password(const char *config_file,
+                          const char *username,
+                          const char *new_password);
+
 /* Lấy role của một user bất kỳ từ config.txt. */
 int  get_user_role(const char *config_file,
                    const char *username,

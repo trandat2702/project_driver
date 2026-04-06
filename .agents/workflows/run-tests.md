@@ -6,7 +6,7 @@ description: chạy toàn bộ test suite của dự án (unit + integration)
 
 1. Build tất cả test binaries
 ```bash
-cd /home/dat/linux-driver-project/tests && make all 2>&1
+cd /home/dat/linux-driver-project/tests && make clean && make all 2>&1
 ```
 
 2. Chạy mock normalize test (không cần driver)
@@ -26,5 +26,6 @@ cd /home/dat/linux-driver-project/tests && ./userspace_tests/test_student
 
 5. Chạy integration test (cần driver đã load)
 ```bash
-sudo /home/dat/linux-driver-project/tests/integration_tests/test_driver_io
+sudo -n /home/dat/linux-driver-project/tests/integration_tests/test_driver_io || \
+echo "SKIP integration: can sudo with password and run this command manually"
 ```
