@@ -19,6 +19,7 @@
 #include "auth.h"
 #include "student.h"
 #include "usb_file.h"
+#include "audit.h"
 
 #define COL_CODE  0
 #define COL_NAME  1
@@ -66,6 +67,16 @@ typedef struct {
     GtkWidget *sort_combo;
 
     char logged_in_user[64];         /* username of current session */
+    char logged_in_role[MAX_ROLE_LEN]; /* role: admin or viewer */
+
+    /* Role-sensitive widgets (disabled for viewer) */
+    GtkWidget *btn_add;
+    GtkWidget *btn_edit;
+    GtkWidget *btn_delete;
+    GtkWidget *btn_save;
+    GtkWidget *btn_manage_users;     /* sidebar button, hidden for viewer */
+
+    GtkWidget *topbar_user_label;    /* shows "user (role)" on topbar */
 } AppState;
 
 /* ── USB mount status checker ──────────────────────────────────────────── */
@@ -321,7 +332,9 @@ static void on_login_clicked(GtkButton *btn, gpointer user_data) {
         return;
     }
 
-    if (!authenticate_credentials("config.txt", username, password)) {
+    char role[MAX_ROLE_LEN] = {0};
+    if (!authenticate_with_role("config.txt", username, password, role, sizeof(role))) {
+        log_audit(username, "Failed login attempt");
         app->login_attempts++;
         char err_msg[160];
 
@@ -349,12 +362,36 @@ static void on_login_clicked(GtkButton *btn, gpointer user_data) {
         return;
     }
 
-    /* Success – reset counter and save username */
+    /* Success – reset counter, save username & role */
     app->login_attempts = 0;
     strncpy(app->logged_in_user, username, sizeof(app->logged_in_user) - 1);
     app->logged_in_user[sizeof(app->logged_in_user) - 1] = '\0';
+    strncpy(app->logged_in_role, role, sizeof(app->logged_in_role) - 1);
+    app->logged_in_role[sizeof(app->logged_in_role) - 1] = '\0';
+
+    /* Update topbar user info */
+    if (app->topbar_user_label) {
+        char user_info[128];
+        const char *role_vi = (strcmp(role, ROLE_ADMIN) == 0) ?
+                              "Quản trị viên" : "Chỉ xem";
+        snprintf(user_info, sizeof(user_info), "👤 %s (%s)", username, role_vi);
+        gtk_label_set_text(GTK_LABEL(app->topbar_user_label), user_info);
+    }
+
+    /* Apply role-based UI */
+    int is_admin = (strcmp(role, ROLE_ADMIN) == 0);
+    if (app->btn_add)    gtk_widget_set_sensitive(app->btn_add,    is_admin);
+    if (app->btn_edit)   gtk_widget_set_sensitive(app->btn_edit,   is_admin);
+    if (app->btn_delete) gtk_widget_set_sensitive(app->btn_delete, is_admin);
+    if (app->btn_save)   gtk_widget_set_sensitive(app->btn_save,   is_admin);
+    if (app->btn_manage_users) {
+        gtk_widget_set_visible(app->btn_manage_users, is_admin);
+        gtk_widget_set_no_show_all(app->btn_manage_users, !is_admin);
+    }
+
     gtk_stack_set_visible_child_name(GTK_STACK(app->stack), "dashboard");
-    set_status(app, "Đăng nhập thành công. Xin chào, %s!", username);
+    set_status(app, "Đăng nhập thành công. Xin chào, %s! [%s]",
+               username, is_admin ? "Admin" : "Viewer");
 }
 
 static void on_add_clicked(GtkButton *btn, gpointer user_data) {
@@ -386,7 +423,8 @@ static void on_add_clicked(GtkButton *btn, gpointer user_data) {
 
     if (add_student(app->list, &app->count, code, name, student_class, dob, gpa) == 0) {
         refresh_main_table(app);
-        set_status(app, "Da them sinh vien: %s – %s", code, name);
+        set_status(app, "Thêm sinh viên %s thành công!", code);
+        log_audit(app->logged_in_user, "Added student: %s", code);
         clear_form(app);
     } else {
         set_status(app, "Them that bai: ma %s co the da ton tai", code);
@@ -417,7 +455,8 @@ static void on_delete_clicked(GtkButton *btn, gpointer user_data) {
     normalize_code_key(code, normalized_code, sizeof(normalized_code));
     if (delete_student(app->list, &app->count, normalized_code) == 0) {
         refresh_main_table(app);
-        set_status(app, "Da xoa sinh vien: %s", normalized_code);
+        set_status(app, "Xóa sinh viên (Mã SV: %s) thành công!", normalized_code);
+        log_audit(app->logged_in_user, "Deleted student: %s", normalized_code);
         clear_form(app);
     } else {
         set_status(app, "Xoa that bai – khong tim thay ma: %s", normalized_code);
@@ -456,9 +495,10 @@ static void on_save_clicked(GtkButton *btn, gpointer user_data) {
     const char *file   = gtk_entry_get_text(GTK_ENTRY(app->file_entry));
     const char *target = is_blank(file) ? "students.txt" : file;
 
-    if (save_to_file(target, app->list, app->count) == 0)
-        set_status(app, "Da luu %d sinh vien → %s", app->count, target);
-    else
+    if (save_to_file(target, app->list, app->count) == 0) {
+        set_status(app, "Đã lưu danh sách vào %s", target);
+        log_audit(app->logged_in_user, "Saved data to file: %s", target);
+    } else
         set_status(app, "Luu that bai: %s", target);
 }
 
@@ -477,7 +517,8 @@ static void on_load_clicked(GtkButton *btn, gpointer user_data) {
 
     if (load_from_file(target, app->list, &app->count) == 0) {
         refresh_main_table(app);
-        set_status(app, "Da tai %d sinh vien tu: %s", app->count, target);
+        set_status(app, "Đã tải %d sinh viên từ: %s", app->count, target);
+        log_audit(app->logged_in_user, "Loaded data from file: %s", target);
     } else {
         set_status(app, "Tai that bai: %s", target);
     }
@@ -517,9 +558,10 @@ static void on_usb_write_clicked(GtkButton *btn, gpointer user_data) {
         return;
     }
     get_usb_text(app, content, sizeof(content));
-    if (usb_write_text_file(mount_path, file_name, content) == 0)
-        set_status(app, "Ghi USB thanh cong: %s/%s", mount_path, file_name);
-    else
+    if (usb_write_text_file(mount_path, file_name, content) == 0) {
+        set_status(app, "Ghi USB thành công: %s/%s", mount_path, file_name);
+        log_audit(app->logged_in_user, "Wrote to USB: %s/%s", mount_path, file_name);
+    } else
         set_status(app, "Ghi USB that bai");
 }
 
@@ -536,10 +578,37 @@ static void on_usb_read_clicked(GtkButton *btn, gpointer user_data) {
     }
     if (usb_read_text_file(mount_path, file_name, output, sizeof(output)) == 0) {
         set_usb_text(app, output);
-        set_status(app, "Doc USB thanh cong: %s/%s", mount_path, file_name);
+        set_status(app, "Doc USB thành công: %s/%s", mount_path, file_name);
+        log_audit(app->logged_in_user, "Read from USB: %s/%s", mount_path, file_name);
     } else {
         set_status(app, "Doc USB that bai");
     }
+}
+
+static void on_export_csv_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    AppState *app = (AppState *)user_data;
+    
+    GtkWidget *dialog = gtk_file_chooser_dialog_new("Lưu File CSV",
+                                      GTK_WINDOW(app->window),
+                                      GTK_FILE_CHOOSER_ACTION_SAVE,
+                                      "Hủy", GTK_RESPONSE_CANCEL,
+                                      "Xuất", GTK_RESPONSE_ACCEPT,
+                                      NULL);
+                                      
+    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "danh_sach.csv");
+    
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        char *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        if (export_to_csv(filename, app->list, app->count) == 0) {
+            set_status(app, "Đã xuất báo cáo CSV: %s", filename);
+            log_audit(app->logged_in_user, "Exported CSV: %s", filename);
+        } else {
+            set_status(app, "Lỗi khi xuất CSV!");
+        }
+        g_free(filename);
+    }
+    gtk_widget_destroy(dialog);
 }
 
 static void on_export_usb_clicked(GtkButton *btn, gpointer user_data) {
@@ -558,9 +627,10 @@ static void on_export_usb_clicked(GtkButton *btn, gpointer user_data) {
         return;
 
     snprintf(full_path, sizeof(full_path), "%s/%s", mount_path, file_name);
-    if (save_to_file(full_path, app->list, app->count) == 0)
-        set_status(app, "Xuat thanh cong → %s", full_path);
-    else
+    if (save_to_file(full_path, app->list, app->count) == 0) {
+        set_status(app, "Đã xuất danh sách (%d SV) vào %s", app->count, full_path);
+        log_audit(app->logged_in_user, "Exported TXT to USB: %s", full_path);
+    } else
         set_status(app, "Xuat that bai: %s", full_path);
 }
 
@@ -694,6 +764,7 @@ static void on_change_password_clicked(GtkButton *btn, gpointer user_data) {
 
         /* Success */
         set_status(app, "Đổi mật khẩu thành công cho tài khoản %s", app->logged_in_user);
+        log_audit(app->logged_in_user, "Changed password");
         break;
     }
     gtk_widget_destroy(dialog);
@@ -760,7 +831,8 @@ static void on_edit_clicked(GtkButton *btn, gpointer user_data) {
                 s->gpa = gpa;
 
             refresh_main_table(app);
-            set_status(app, "Da cap nhat sinh vien: %s", code);
+            set_status(app, "Đã cập nhật sinh viên: %s", code);
+            log_audit(app->logged_in_user, "Updated student: %s", code);
             return;
         }
     }
@@ -876,6 +948,123 @@ static GtkWidget *build_login_view(AppState *app) {
     return root;
 }
 
+/* ── User Management Dialog ────────────────────────────────────────────── */
+
+typedef struct {
+    GtkWidget *tree;
+    GtkListStore *store;
+    GtkWidget *user_entry;
+    GtkWidget *pass_entry;
+    GtkWidget *role_combo;
+    AppState *app;
+} ManageUsersState;
+
+static void refresh_user_list(ManageUsersState *st) {
+    char users[MAX_USERS][MAX_USERNAME];
+    char roles[MAX_USERS][MAX_ROLE_LEN];
+    int count = list_users("config.txt", users, roles, MAX_USERS);
+    gtk_list_store_clear(st->store);
+    for (int i = 0; i < count; i++) {
+        GtkTreeIter iter;
+        gtk_list_store_append(st->store, &iter);
+        gtk_list_store_set(st->store, &iter, 0, users[i], 1, roles[i], -1);
+    }
+}
+
+static void on_mu_add_clicked(GtkButton *btn, gpointer data) {
+    (void)btn;
+    ManageUsersState *st = (ManageUsersState *)data;
+    const char *u = gtk_entry_get_text(GTK_ENTRY(st->user_entry));
+    const char *p = gtk_entry_get_text(GTK_ENTRY(st->pass_entry));
+    char *r = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(st->role_combo));
+    if (u[0] && p[0] && r) {
+        add_user("config.txt", u, p, r);
+        log_audit(st->app->logged_in_user, "Created user: %s (Role: %s)", u, r);
+        refresh_user_list(st);
+        gtk_entry_set_text(GTK_ENTRY(st->user_entry), "");
+        gtk_entry_set_text(GTK_ENTRY(st->pass_entry), "");
+        g_free(r);
+    }
+}
+
+static void on_mu_del_clicked(GtkButton *btn, gpointer data) {
+    (void)btn;
+    ManageUsersState *st = (ManageUsersState *)data;
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(st->tree));
+    GtkTreeModel *model;
+    GtkTreeIter iter;
+    if (gtk_tree_selection_get_selected(sel, &model, &iter)) {
+        gchar *u;
+        gtk_tree_model_get(model, &iter, 0, &u, -1);
+        if (strcmp(u, st->app->logged_in_user) != 0) {
+            delete_user("config.txt", u);
+            log_audit(st->app->logged_in_user, "Deleted user: %s", u);
+            refresh_user_list(st);
+        }
+        g_free(u);
+    }
+}
+
+static void on_manage_users_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    AppState *app = (AppState *)user_data;
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Quản lý tài khoản (Admin)",
+        GTK_WINDOW(app->window), GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "Đóng", GTK_RESPONSE_CLOSE, NULL);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 480, 320);
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_box_set_spacing(GTK_BOX(content), 8);
+    gtk_container_set_border_width(GTK_CONTAINER(content), 12);
+
+    ManageUsersState *st = g_new0(ManageUsersState, 1);
+    st->app = app;
+    st->store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
+    st->tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(st->store));
+    GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    gtk_tree_view_insert_column_with_attributes(GTK_TREE_VIEW(st->tree), -1, "Tài khoản", renderer, "text", 0, NULL);
+    gtk_tree_view_insert_column_with_attributes(GTK_TREE_VIEW(st->tree), -1, "Phân quyền", renderer, "text", 1, NULL);
+
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_vexpand(scroll, TRUE);
+    gtk_container_add(GTK_CONTAINER(scroll), st->tree);
+    gtk_box_pack_start(GTK_BOX(content), scroll, TRUE, TRUE, 0);
+
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    st->user_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(st->user_entry), "Tài khoản mới");
+    st->pass_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(st->pass_entry), "Mật khẩu");
+    gtk_entry_set_visibility(GTK_ENTRY(st->pass_entry), FALSE);
+    st->role_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(st->role_combo), ROLE_VIEWER);
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(st->role_combo), ROLE_ADMIN);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(st->role_combo), 0);
+
+    GtkWidget *btn_add = gtk_button_new_with_label("Thêm");
+    GtkWidget *btn_del = gtk_button_new_with_label("Xóa chọn");
+
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_add), "primary-btn");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_del), "danger-btn");
+
+    g_signal_connect(btn_add, "clicked", G_CALLBACK(on_mu_add_clicked), st);
+    g_signal_connect(btn_del, "clicked", G_CALLBACK(on_mu_del_clicked), st);
+
+    gtk_box_pack_start(GTK_BOX(hbox), st->user_entry, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), st->pass_entry, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), st->role_combo, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), btn_add, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), btn_del, FALSE, FALSE, 0);
+    
+    gtk_box_pack_start(GTK_BOX(content), hbox, FALSE, FALSE, 0);
+
+    refresh_user_list(st);
+    gtk_widget_show_all(content);
+    gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+    g_free(st);
+}
+
 /* ── Dashboard view ────────────────────────────────────────────────────── */
 
 static GtkWidget *build_dashboard_view(AppState *app) {
@@ -933,8 +1122,8 @@ static GtkWidget *build_dashboard_view(AppState *app) {
 
     GtkWidget *btn_browse_file = gtk_button_new_with_label("📂  Chọn file");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_browse_file), "side-action");
-    GtkWidget *btn_save = gtk_button_new_with_label("💾  Lưu file");
-    gtk_style_context_add_class(gtk_widget_get_style_context(btn_save), "side-action");
+    app->btn_save = gtk_button_new_with_label("💾  Lưu file");
+    gtk_style_context_add_class(gtk_widget_get_style_context(app->btn_save), "side-action");
     GtkWidget *btn_load = gtk_button_new_with_label("📥  Tải file");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_load), "side-action");
 
@@ -943,6 +1132,12 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_widget_set_vexpand(sidebar_spacer, TRUE);
 
     GtkWidget *sep4 = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+
+    app->btn_manage_users = gtk_button_new_with_label("👥 Quản lý tài khoản");
+    gtk_style_context_add_class(gtk_widget_get_style_context(app->btn_manage_users), "side-action");
+    /* Hidden by default until login confirms admin role */
+    gtk_widget_set_no_show_all(app->btn_manage_users, TRUE);
+
     GtkWidget *btn_change_pw = gtk_button_new_with_label("🔑  Đổi mật khẩu");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_change_pw), "side-action");
     GtkWidget *btn_logout = gtk_button_new_with_label("⏻  Đăng xuất");
@@ -963,10 +1158,11 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_box_pack_start(GTK_BOX(sidebar), file_label,      FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), file_lbox,       FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), btn_browse_file, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(sidebar), btn_save,        FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(sidebar), app->btn_save,   FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), btn_load,        FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), sidebar_spacer,  TRUE,  TRUE,  0);
     gtk_box_pack_start(GTK_BOX(sidebar), sep4,            FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(sidebar), app->btn_manage_users, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), btn_change_pw,   FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), btn_logout,      FALSE, FALSE, 0);
 
@@ -978,6 +1174,7 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     /* ── Top bar ─────────────────────────────────────────────────────── */
     GtkWidget *topbar       = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
     GtkWidget *topbar_title = gtk_label_new("Hệ Thống Quản Lý Sinh Viên");
+    app->topbar_user_label  = gtk_label_new("");
     GtkWidget *chip_driver  = gtk_label_new("Driver: string_norm");
     GtkWidget *chip_ready   = gtk_label_new("● Sẵn sàng");
 
@@ -989,6 +1186,7 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_widget_set_halign(topbar_title, GTK_ALIGN_START);
 
     gtk_box_pack_start(GTK_BOX(topbar), topbar_title, TRUE,  TRUE,  0);
+    gtk_box_pack_end  (GTK_BOX(topbar), app->topbar_user_label, FALSE, FALSE, 10);
     gtk_box_pack_end  (GTK_BOX(topbar), chip_ready,   FALSE, FALSE, 0);
     gtk_box_pack_end  (GTK_BOX(topbar), chip_driver,  FALSE, FALSE, 0);
 
@@ -1082,17 +1280,17 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_entry_set_placeholder_text(GTK_ENTRY(app->gpa_entry),   "0.00");
 
     GtkWidget *form_btn_row  = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *btn_add       = gtk_button_new_with_label("＋ Thêm");
-    GtkWidget *btn_edit      = gtk_button_new_with_label("✎ Sửa");
-    GtkWidget *btn_delete    = gtk_button_new_with_label("✕ Xóa");
+    app->btn_add       = gtk_button_new_with_label("＋ Thêm");
+    app->btn_edit      = gtk_button_new_with_label("✎ Sửa");
+    app->btn_delete    = gtk_button_new_with_label("✕ Xóa");
 
-    gtk_style_context_add_class(gtk_widget_get_style_context(btn_add),    "primary-btn");
-    gtk_style_context_add_class(gtk_widget_get_style_context(btn_edit),   "secondary-btn");
-    gtk_style_context_add_class(gtk_widget_get_style_context(btn_delete), "danger-btn");
+    gtk_style_context_add_class(gtk_widget_get_style_context(app->btn_add),    "primary-btn");
+    gtk_style_context_add_class(gtk_widget_get_style_context(app->btn_edit),   "secondary-btn");
+    gtk_style_context_add_class(gtk_widget_get_style_context(app->btn_delete), "danger-btn");
 
-    gtk_box_pack_start(GTK_BOX(form_btn_row), btn_add,    FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(form_btn_row), btn_edit,   FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(form_btn_row), btn_delete, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(form_btn_row), app->btn_add,    FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(form_btn_row), app->btn_edit,   FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(form_btn_row), app->btn_delete, FALSE, FALSE, 0);
 
     gtk_box_pack_start(GTK_BOX(form_card), form_header,  FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(form_card), grid,         FALSE, FALSE, 0);
@@ -1121,13 +1319,15 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     GtkWidget *usb_btn_row   = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     GtkWidget *btn_usb_write = gtk_button_new_with_label("Ghi USB");
     GtkWidget *btn_usb_read  = gtk_button_new_with_label("Đọc USB");
-    GtkWidget *btn_export    = gtk_button_new_with_label("Xuất danh sách → USB");
+    GtkWidget *btn_export    = gtk_button_new_with_label("Lưu USB (.txt)");
+    GtkWidget *btn_export_csv = gtk_button_new_with_label("Xuất Excel (.csv)");
 
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_usb_write), "secondary-btn");
-    gtk_style_context_add_class(gtk_widget_get_style_context(btn_export),    "primary-btn");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_export_csv), "primary-btn");
 
     gtk_box_pack_start(GTK_BOX(usb_btn_row), btn_usb_write, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(usb_btn_row), btn_usb_read,  FALSE, FALSE, 0);
+    gtk_box_pack_end  (GTK_BOX(usb_btn_row), btn_export_csv,FALSE, FALSE, 0);
     gtk_box_pack_end  (GTK_BOX(usb_btn_row), btn_export,    FALSE, FALSE, 0);
 
     GtkWidget *usb_scroll = gtk_scrolled_window_new(NULL, NULL);
@@ -1175,23 +1375,25 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     g_signal_connect(app->search_entry, "activate", G_CALLBACK(on_search_clicked), app);
     g_signal_connect(btn_list,          "clicked",  G_CALLBACK(on_list_clicked),   app);
 
-    g_signal_connect(btn_add,        "clicked", G_CALLBACK(on_add_clicked),        app);
-    g_signal_connect(btn_edit,       "clicked", G_CALLBACK(on_edit_clicked),       app);
-    g_signal_connect(btn_delete,     "clicked", G_CALLBACK(on_delete_clicked),     app);
-    g_signal_connect(btn_clear_form, "clicked", G_CALLBACK(on_clear_form_clicked), app);
+    g_signal_connect(app->btn_add,    "clicked", G_CALLBACK(on_add_clicked),    app);
+    g_signal_connect(app->btn_edit,   "clicked", G_CALLBACK(on_edit_clicked),   app);
+    g_signal_connect(app->btn_delete, "clicked", G_CALLBACK(on_delete_clicked), app);
+    g_signal_connect(btn_clear_form,  "clicked", G_CALLBACK(on_clear_form_clicked), app);
 
     g_signal_connect(btn_sort, "clicked", G_CALLBACK(on_sort_clicked), app);
 
-    g_signal_connect(btn_save,        "clicked", G_CALLBACK(on_save_clicked),        app);
-    g_signal_connect(btn_load,        "clicked", G_CALLBACK(on_load_clicked),        app);
+    g_signal_connect(app->btn_save,   "clicked", G_CALLBACK(on_save_clicked),   app);
+    g_signal_connect(btn_load,        "clicked", G_CALLBACK(on_load_clicked),   app);
     g_signal_connect(btn_browse_file, "clicked", G_CALLBACK(on_browse_file_clicked), app);
 
     g_signal_connect(btn_usb_write,        "clicked", G_CALLBACK(on_usb_write_clicked),        app);
     g_signal_connect(btn_usb_read,         "clicked", G_CALLBACK(on_usb_read_clicked),         app);
     g_signal_connect(btn_export,           "clicked", G_CALLBACK(on_export_usb_clicked),       app);
+    g_signal_connect(btn_export_csv,       "clicked", G_CALLBACK(on_export_csv_clicked),       app);
     g_signal_connect(btn_browse_usb,       "clicked", G_CALLBACK(on_browse_usb_mount_clicked), app);
     g_signal_connect(btn_browse_usb_file,  "clicked", G_CALLBACK(on_browse_usb_file_clicked),  app);
 
+    g_signal_connect(app->btn_manage_users, "clicked", G_CALLBACK(on_manage_users_clicked), app);
     g_signal_connect(btn_change_pw, "clicked", G_CALLBACK(on_change_password_clicked), app);
     g_signal_connect(btn_logout,    "clicked", G_CALLBACK(on_logout_clicked), app);
 
@@ -1227,8 +1429,8 @@ int main(int argc, char **argv) {
     gtk_init(&argc, &argv);
 
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(app.window), "He Thong Quan Ly Sinh Vien");
-    gtk_window_set_default_size(GTK_WINDOW(app.window), 1160, 740);
+    gtk_window_set_title(GTK_WINDOW(app.window), "Hệ thống quản lý sinh viên");
+    gtk_window_set_default_size(GTK_WINDOW(app.window), 980, 680);
     gtk_window_set_position(GTK_WINDOW(app.window), GTK_WIN_POS_CENTER);
     g_signal_connect(app.window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 

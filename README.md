@@ -1,383 +1,87 @@
-# Student Management System with Linux Drivers
+# 🚀 Student Management System (Linux Kernel & Userspace Project)
 
-Dự án C trên Linux gồm 3 phần chạy cùng nhau:
+> **Mô tả:** Hệ thống Quản lý Sinh viên toàn diện trên Linux nhân hệ điều hành CentOS 64-bit. Dự án kết hợp liền mạch giữa **Kernel Space** (Device Driver xử lý logic) và **Userspace** (Ứng dụng giao diện GTK3). 
+> **Tiêu chí nổi bật:** Thiết kế chuẩn bảo mật phân quyền (RBAC), chống tấn công nạp dữ liệu (Data poisoning), tự động kết nối thiết bị ngoại vi lưu trữ (USB), hỗ trợ Xuất báo cáo Excel và Ghi nhật ký hệ thống (Audit Log).
+> **Hệ điều hành:** CentOS 64-bit.
 
-- `kernel_module/`: kernel module tạo thiết bị ký tự `/dev/string_norm` để chuẩn hóa chuỗi họ tên.
-- `userspace_app/`: ứng dụng quản lý sinh viên ở cả chế độ CLI và GUI GTK3.
-- `usb_driver/`: USB mass-storage monitor demo để ghi log khi cắm/rút thiết bị USB.
+---
 
-Ngoài ra repo có `tests/` để kiểm thử logic userspace và kiểm thử tích hợp với driver chuẩn hóa chuỗi.
+## 🛠️ 1. Môi trường & Ngôn ngữ
+- **Kernel:** Linux Kernel 6.x+ (CentOS / RHEL 9+)
+- **Ngôn ngữ:** Lập trình C (GCC 11+)
+- **Giao diện (GUI):** GTK+ 3.0
+- **Bảo mật:** Thư viện OpenSSL 3.x (Mã hóa SHA-256)
+- **Kernel Driver:** Module Character Device `string_norm` (`/dev/string_norm`)
 
-## 1. Mục tiêu dự án
-
-Hệ thống minh họa cách kết hợp:
-
-- kernel module trong Linux
-- ứng dụng userspace viết bằng C
-- xác thực bằng SHA-256 với OpenSSL
-- GUI GTK3
-- thao tác file thường và file trên USB mount path
-
-Luồng chính của bài toán:
-
-1. Người dùng đăng nhập từ CLI hoặc GUI.
-2. Khi thêm/sửa sinh viên, họ tên được gửi xuống `/dev/string_norm`.
-3. Kernel module chuẩn hóa chuỗi theo kiểu title case, loại bỏ khoảng trắng thừa.
-4. Dữ liệu được lưu trong `students.txt`.
-
-## 2. Cấu trúc thư mục
-
-```text
-.
-├── kernel_module/
-│   ├── string_norm.c
-│   ├── string_norm.h
-│   └── Makefile
-├── userspace_app/
-│   ├── main.c
-│   ├── gui_app.c
-│   ├── student.c
-│   ├── auth.c
-│   ├── usb_file.c
-│   ├── config.txt
-│   ├── students.txt
-│   ├── style.css
-│   └── Makefile
-├── usb_driver/
-│   ├── usb_driver.c
-│   ├── usb_file_demo.c
-│   └── Makefile
-├── tests/
-│   ├── userspace_tests/
-│   ├── integration_tests/
-│   └── Makefile
-└── README.md
-```
-
-## 3. Thành phần chính
-
-### 3.1 `kernel_module/string_norm`
-
-Module này đăng ký character device `/dev/string_norm`.
-
-Chức năng:
-
-- nhận chuỗi từ userspace qua `write()`
-- bỏ khoảng trắng đầu/cuối
-- gộp nhiều khoảng trắng liên tiếp thành 1 dấu cách
-- viết hoa chữ cái đầu mỗi từ, viết thường các ký tự còn lại
-- trả chuỗi đã xử lý qua `read()`
-
-Ví dụ:
-
-```text
-Input : "   nGuYeN   vAn   aN   "
-Output: "Nguyen Van An"
-```
-
-### 3.2 `userspace_app`
-
-Ứng dụng quản lý sinh viên có 2 giao diện:
-
-- CLI: `student_manager`
-- GUI GTK3: `student_manager_gui`
-
-Chức năng hiện có trong mã nguồn:
-
-- đăng nhập bằng tài khoản lưu trong `config.txt`
-- băm mật khẩu bằng SHA-256
-- khóa đăng nhập sau 3 lần sai trong 30 giây
-- thêm, sửa, xóa, tìm kiếm sinh viên
-- sắp xếp theo tên hoặc GPA
-- lưu/đọc danh sách sinh viên từ file
-- ghi file text ra USB
-- đọc file text từ USB
-- export danh sách sinh viên ra USB
-- đổi mật khẩu trong GUI
-
-Thông tin sinh viên được lưu trong struct:
-
-```c
-typedef struct {
-    char  student_code[MAX_CODE_LEN];
-    char  raw_name[MAX_NAME_LEN];
-    char  normalized_name[MAX_NAME_LEN];
-    char  student_class[MAX_CLASS_LEN];
-    char  dob[MAX_DOB_LEN];
-    float gpa;
-} Student;
-```
-
-### 3.3 `usb_driver`
-
-Đây là module demo cho USB mass-storage.
-
-Chức năng:
-
-- đăng ký `usb_driver`
-- bắt sự kiện cắm/rút USB storage
-- in ra `dmesg` các thông tin như vendor ID, product ID, hãng, tên thiết bị, serial, bus, address, speed
-
-Repo cũng có `usb_file_demo.c` để thử ghi/đọc một file test trên thư mục mount của USB từ userspace.
-
-## 4. Dữ liệu và định dạng file
-
-### 4.1 `userspace_app/config.txt`
-
-Định dạng:
-
-```text
-username:sha256_hash
-```
-
-Mẫu đang có trong repo:
-
-- `admin` / mật khẩu `admin`
-- `student` / mật khẩu `123`
-
-Lưu ý: mã nguồn không lưu plaintext password, chỉ so sánh SHA-256 hash.
-
-### 4.2 `userspace_app/students.txt`
-
-Định dạng:
-
-```text
-# code|name|class|dob|gpa
-CT070310|Tran Quoc Aaaaaa|CT7C|27/02/2004|3.00
-```
-
-Trong file lưu, trường `name` là tên đã chuẩn hóa.
-
-## 5. Yêu cầu môi trường
-
-Repo này được viết để chạy trên Linux, không dành cho Windows native.
-
-Khuyến nghị:
-
-- Linux kernel 6.x hoặc tương thích
-- GCC
-- `make`
-- `kernel-devel` hoặc kernel headers tương ứng với kernel đang chạy
-- `pkg-config`
-- GTK+ 3.0 development package
-- OpenSSL development package
-
-Ví dụ với CentOS Stream / RHEL:
-
+**Lệnh cài đặt môi trường cần thiết:**
 ```bash
-sudo dnf install -y gcc make kernel-devel kernel-headers pkg-config gtk3-devel openssl-devel
+sudo dnf install -y kernel-devel kernel-headers gcc make pkg-config gtk3-devel openssl-devel
 ```
 
-Ví dụ với Ubuntu / Debian:
+---
 
-```bash
-sudo apt update
-sudo apt install -y build-essential linux-headers-$(uname -r) pkg-config libgtk-3-dev libssl-dev
-```
+## 📂 2. Cấu trúc Dự Án
 
-## 6. Build dự án
+*   `kernel_module/`: Chứa file mã nguồn `string_norm.c` xây dựng Linux Kernel Driver chuyên biệt làm nhiệm vụ chuẩn hóa xâu (Normalizer) - Xóa khoảng trắng thừa và viết hoa chữ cái.
+*   `userspace_app/`: Toàn bộ lõi ứng dụng không gian người dùng.
+    *   `gui_app.c`: Khung giao diện cửa sổ GTK3.
+    *   `auth.c` / `auth.h`: Xử lý bảo mật băm SHA-256 và cấp quyền đăng nhập.
+    *   `audit.c` / `audit.h`: Hệ thống Ghi nhật ký (Audit Log) theo dõi toàn bộ hoạt động.
+    *   `student.c` / `student.h`: Cấu trúc dữ liệu sinh viên, Thêm/Sửa/Xóa và xuất Excel.
+*   `tests/`: Bộ Unit/Integration Test tự động Python+C (90+ Test Cases).
+*   `.agents/workflows/`: Kho lệnh tự động phục vụ demo.
 
-### 6.1 Build kernel module chuẩn hóa chuỗi
+---
 
-```bash
-cd kernel_module
-make
-```
+## ⚡ 3. Thao tác Nhanh (Slash Commands)
 
-Load module và tạo device node:
+Dự án được kết hợp các Shell Workflows độc đáo để quá trình Biên dịch - Khởi động - Tải Driver chỉ nằm trong 1 cú click (Thay vì gõ thủ công từng lệnh make và insmod):
 
-```bash
-make load
-```
+- **`/setup-project`**: Lệnh khởi tạo A-Z (Gỡ mọi phiên bản cũ, Build driver, Tải Kernel module mới, Build app). Dùng 1 lần duy nhất khi vừa tải code về.
+- **`/run-gui`**: Biên dịch phần mềm Userspace và hiển thị màn hình phần mềm Quản lý.
+- **`/unload-driver`**: Gỡ module Kernel (`rmmod`) và xóa nút `/dev/string_norm`.
+- **`/run-tests`**: Thực thi toàn bộ hộp kiểm thử để đánh giá.
 
-Kiểm tra trạng thái:
+---
 
-```bash
-make status
-```
+## 🌟 4. Các Tính Năng Đột Phá
 
-Gỡ module:
+### 🔐 1. Bảo Mật Đăng Nhập & Phân Quyền (RBAC)
+*   **SHA-256 Hashing:** Tuyệt đối không lưu mật khẩu thô. Ngăn chặn Brute-force (khóa 30 giây khi sai 3 lần).
+*   **Role-Based Access Control:**
+    *   **Admin (`admin` / `admin`)**: Đầy đủ mọi quyền (Thêm, Sửa, Xóa, Lưu vào cấu hình, Tạo User mới, Xóa User khác).
+    *   **Viewer (`student` / `123`)**: Chỉ có quyền "Xem dữ liệu" và tải danh sách hiển thị, tải file từ USB. Các phím tương tác phá hoại bị khóa cưỡng chế.
 
-```bash
-make unload
-```
+### 🛡️ 2. Lõi Lọc Dữ Liệu Chống Ô Nhiễm (Anti-Data Poisoning)
+*   Mọi thông tin nạp từ USB hay File Text ngoài không được nạp trực tiếp! Lõi sẽ quét từng dòng. Nếu phát hiện điền sai cấu trúc ngày sinh (`dd/mm/yyyy`), điểm GPA vô lý (`> 4.0`), hoặc bị trùng lặp **Mã Sinh Viên**, phần mềm sẽ chủ động chặn dòng dữ liệu đó, bảo vệ tuổi thọ của CSDL.
 
-### 6.2 Build ứng dụng userspace
+### 🖥️ 3. Giao diện Đồ Họa Cửa Sổ Hấp Dẫn (GTK3)
+*   Sử dụng CSS Native với hệ lưới linh hoạt. Màu chủ đạo **Aurora Dark Mode**.
+*   Thanh Sidebar trực quan có điều hướng rõ ràng, thanh Topbar hiển thị tên người dùng và vai trò.
 
-```bash
-cd userspace_app
-make
-make student_manager_gui
-```
+### 📊 4. Xuất Báo Cáo Excel (CSV UTF-8)
+*   Hỗ trợ xuất danh sách toàn trường ra một file `.csv` tích hợp sẵn mã định dạng **UTF-8 BOM**. Mở bằng Excel trên Windows, MacOS sẽ không bao giờ bị lỗi font tiếng Việt.
 
-Trong `userspace_app/Makefile`:
+### 👁️ 5. Mắt Thần Hệ Thống (Audit Log)
+*   File `audit.log` ngầm định ghi nhận từng mili-giây đối với các hành vi của người dùng: *Ai là người thêm sinh viên A, ai vừa thay đổi mật khẩu, đăng nhập sai lúc mấy giờ?*
 
-- `make` build CLI app `student_manager`
-- `make student_manager_gui` build GUI app
-- `make run` chạy CLI
-- `make run-gui` chạy GUI
+---
 
-### 6.3 Build USB driver demo
+## 🧪 5. Kịch Bản Demo (Cho Chấm Điểm)
 
-```bash
-cd usb_driver
-make
-make demo
-```
+### Kịch bản 1: Phô diễn sức mạnh Kernel Driver
+1. Mở app, thêm thử 1 sinh viên có tên gõ sai định dạng: `  nGuyen     VAn     a  `.
+2. Lưu. Danh sách lập tức xuất hiện dòng chữ gọn gàng `Nguyen Van A`. Dữ liệu này thực chất đã chạy một vòng từ Userspace "chọc" thẳng xuống Kernel Mode qua `/dev/string_norm` rồi mới quay lại hiển thị bảng.
 
-Load USB driver:
+### Kịch bản 2: Bảo vệ bằng Phân Quyền (RBAC)
+1. Dùng quyền Admin, bấm **Quản lý Tài Khoản**, tạo tài khoản `khach` mật khẩu `khach`, Role = `Viewer`.
+2. Log out ra.
+3. Đăng nhập lại bằng tài khoản `khach`. Các nút Xóa / Lưu báo cáo đều không thể bấm được. Tính bảo mật cực cao.
 
-```bash
-make load
-```
+### Kịch bản 3: Sức mạnh I/O Ngoại Vi & Xuất Excel
+1. Cắm USB vào máy CentOS.
+2. Tại phần mềm, chọn thư mục Mount đường dẫn USB (VD: `/run/media/dat/USB`).
+3. Ấn **Xuất Excel (.csv)**. Rút USB ra, cắm vào máy tính Windows của Giảng viên mở lên xem thành quả bảng xếp điểm tự động chia cột rõ ràng.
 
-Gỡ USB driver:
-
-```bash
-make unload
-```
-
-## 7. Cách chạy
-
-### 7.1 Chạy CLI
-
-```bash
-cd userspace_app
-make run
-```
-
-Menu CLI hiện có:
-
-- thêm sinh viên
-- xóa sinh viên
-- tìm kiếm sinh viên
-- liệt kê danh sách
-- lưu/đọc file
-- ghi file text ra USB
-- đọc file text từ USB
-- export danh sách ra USB
-- sửa sinh viên
-- sắp xếp
-
-### 7.2 Chạy GUI
-
-```bash
-cd userspace_app
-make student_manager_gui
-./student_manager_gui
-```
-
-GUI dùng GTK3 và `style.css`, có các khu vực:
-
-- màn hình đăng nhập
-- bảng danh sách sinh viên
-- form thêm/sửa
-- thanh bên cho sort, save/load, đổi mật khẩu, logout
-- vùng thao tác USB
-
-Đăng nhập mẫu:
-
-- username: `admin`
-- password: `admin`
-
-### 7.3 Chạy USB file demo
-
-```bash
-cd usb_driver
-make demo
-./usb_file_demo /run/media/$USER/YOUR_USB_LABEL
-```
-
-Demo sẽ:
-
-- kiểm tra mount path
-- liệt kê file trong USB
-- ghi file test
-- đọc lại file test
-- kiểm tra nội dung round-trip
-
-## 8. Kiểm thử
-
-### 8.1 Build test
-
-```bash
-cd tests
-make
-```
-
-### 8.2 Chạy từng nhóm test
-
-```bash
-make run_mock
-make run_auth
-make run_student
-make run_integration
-```
-
-Các nhóm test hiện có:
-
-- `test_normalize_mock.c`: kiểm thử thuật toán chuẩn hóa chuỗi ở userspace, không cần kernel driver
-- `test_auth.c`: kiểm tra SHA-256 hash với các giá trị mẫu
-- `test_student.c`: unit test cho CRUD, search, sort, save/load, giới hạn `MAX_STUDENTS`
-- `test_driver_io.c`: integration test với `/dev/string_norm`
-
-### 8.3 Chạy full test script
-
-```bash
-cd tests
-sudo make run_all
-```
-
-Script `integration_tests/run_all_tests.sh` sẽ:
-
-1. build `string_norm.ko`
-2. load driver và tạo `/dev/string_norm`
-3. chạy mock test
-4. chạy auth test
-5. chạy student unit test
-6. chạy integration test với driver
-7. in log kernel liên quan
-8. cleanup
-
-## 9. Một số hành vi kỹ thuật đáng chú ý
-
-- Nếu `userspace_app/student.c` không mở được `/dev/string_norm`, hàm thêm/sửa sinh viên sẽ fallback sang tên gốc thay vì dừng chương trình.
-- `save_to_file()` dùng `flock()` để khóa file trong lúc ghi.
-- `search_student()` tìm theo `normalized_name`, `raw_name` và `student_code`.
-- Khi build unit test cho `student.c`, macro `UNIT_TESTING` được dùng để mock driver.
-- GUI tự kiểm tra mount path của USB qua `/proc/mounts` theo chu kỳ.
-
-## 10. Hạn chế hiện tại
-
-- Chuẩn hóa tên chỉ xử lý tốt ký tự ASCII; tên tiếng Việt có dấu chưa được xử lý riêng.
-- Kiểm tra ngày sinh mới dừng ở format `dd/mm/yyyy`, chưa validate ngày theo từng tháng hoặc năm nhuận.
-- USB driver hiện chỉ log thông tin, chưa cung cấp device file hay thao tác I/O kernel-level.
-- Repo đang chứa cả artifact build như `.ko`, binary test, binary app; đây không phải trạng thái tối ưu để phát hành.
-
-## 11. Luồng chạy nhanh đề xuất
-
-```bash
-cd kernel_module
-make
-make load
-
-cd ../userspace_app
-make
-make student_manager_gui
-./student_manager_gui
-```
-
-Khi xong:
-
-```bash
-cd ../kernel_module
-make unload
-```
-
-## 12. Gợi ý phát triển tiếp
-
-- bổ sung `.gitignore` để loại artifact build khỏi repo
-- chuẩn hóa Unicode cho tên tiếng Việt
-- tách phần business logic khỏi UI để test tốt hơn
-- thêm validate DOB đầy đủ
-- thêm script setup tự động cho Linux lab machine
+---
+*Phát triển và Hoàn thiện bởi Đạt & Nhóm trợ lý Deepmind (Antigravity).*

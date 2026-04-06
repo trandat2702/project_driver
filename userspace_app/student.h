@@ -26,6 +26,7 @@ int  search_student(Student *list, int count, const char *name,
 void print_student_list(Student *list, int count);
 int  save_to_file(const char *filename, Student *list, int count);
 int  load_from_file(const char *filename, Student *list, int *count);
+int  export_to_csv(const char *filename, Student *list, int count);
 int  edit_student(Student *list, int count, const char *code);
 void sort_by_name(Student *list, int count);
 void sort_by_gpa(Student *list, int count, int ascending);

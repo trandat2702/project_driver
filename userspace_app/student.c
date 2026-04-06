@@ -39,6 +39,26 @@ static int is_blank_string(const char *s) {
     return 1;
 }
 
+static int is_valid_load_code(const char *s) {
+    if (!s || s[0] == '\0') return 0;
+    while (*s) {
+        if (!isalnum((unsigned char)*s)) return 0;
+        s++;
+    }
+    return 1;
+}
+
+static int is_valid_load_dob(const char *s) {
+    int d, m, y;
+    if (!s || strlen(s) != 10) return 0;
+    if (s[2] != '/' || s[5] != '/') return 0;
+    if (sscanf(s, "%d/%d/%d", &d, &m, &y) != 3) return 0;
+    if (d < 1 || d > 31) return 0;
+    if (m < 1 || m > 12) return 0;
+    if (y < 1900 || y > 2100) return 0;
+    return 1;
+}
+
 /* ========== Helper: chuan hoa (Viet hoa + Liet nhau) cho Ma SV va Lop ========== */
 
 static void normalize_field_upper_no_space(char *dest, const char *src, int max_len) {
@@ -312,7 +332,25 @@ int load_from_file(const char *filename, Student *list, int *count) {
 
         if (sscanf(line, "%19[^|]|%255[^|]|%19[^|]|%14[^|]|%f",
                    code_buf, name_buf, class_buf, dob_buf, &gpa_val) == 5) {
+
+            /* 1. Validate data constraints */
+            if (!is_valid_load_code(code_buf)) continue;
+            if (is_blank_string(name_buf)) continue;
+            if (is_blank_string(class_buf)) continue;
+            if (!is_valid_load_dob(dob_buf)) continue;
+            if (gpa_val < 0.0f || gpa_val > 4.0f) continue;
+
             normalize_field_upper_no_space(s->student_code, code_buf, MAX_CODE_LEN);
+
+            /* 2. Validate duplicates */
+            int is_dup = 0;
+            for (int i = 0; i < *count; i++) {
+                if (strcmp(list[i].student_code, s->student_code) == 0) {
+                    is_dup = 1;
+                    break;
+                }
+            }
+            if (is_dup) continue; /* Skip malformed duplicate line */
 
             strncpy(s->normalized_name, name_buf, MAX_NAME_LEN - 1);
             s->normalized_name[MAX_NAME_LEN - 1] = '\0';
@@ -332,5 +370,26 @@ int load_from_file(const char *filename, Student *list, int *count) {
     fclose(fp);
 
     printf("Loaded %d students from %s\n", *count, filename);
+    return 0;
+}
+
+int export_to_csv(const char *filename, Student *list, int count) {
+    FILE *fp = fopen(filename, "w");
+    if (!fp) return -1;
+
+    /* Ghi tiêu đề cột (sử dụng format có sẵn chuẩn tiếng việt UTF-8) */
+    /* BOM cho Excel nhận diện UTF-8 */
+    fprintf(fp, "\xEF\xBB\xBF");
+    fprintf(fp, "Mã SV,Họ và Tên,Lớp,Ngày Sinh,GPA\n");
+
+    for (int i = 0; i < count; i++) {
+        fprintf(fp, "%s,%s,%s,%s,%.2f\n",
+                list[i].student_code,
+                list[i].raw_name,
+                list[i].student_class,
+                list[i].dob,
+                list[i].gpa);
+    }
+    fclose(fp);
     return 0;
 }
