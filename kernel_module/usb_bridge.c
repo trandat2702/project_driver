@@ -91,10 +91,14 @@ static int validate_path(const char *path) {
 static int validate_text_extension(const char *path) {
     const char *ext;
     ext = strrchr(path, '.');
-    if (!ext)
+    if (!ext) {
+        printk(KERN_WARNING "usb_bridge: rejected (no ext): %s\n", path);
         return -EINVAL;
-    if (strcmp(ext, ".txt") != 0 && strcmp(ext, ".csv") != 0)
+    }
+    if (strcmp(ext, ".txt") != 0 && strcmp(ext, ".csv") != 0) {
+        printk(KERN_WARNING "usb_bridge: rejected (bad ext '%s'): %s\n", ext, path);
         return -EINVAL;
+    }
     return 0;
 }
 
@@ -102,30 +106,38 @@ static int run_mount_helper(const char *device, const char *mount_point,
                             const char *fs_type, const char *options) {
     char *argv[8];
     char *envp[] = { "HOME=/", "PATH=/sbin:/bin:/usr/sbin:/usr/bin", NULL };
-    int ret;
+    int ret, argc = 0;
     char fs_opt[USB_MAX_FSTYPE_LEN + 4];
     char mount_opt[USB_MAX_OPTIONS_LEN + 4];
 
     if (validate_path(device) < 0 || validate_path(mount_point) < 0)
         return -EINVAL;
 
-    argv[0] = "/bin/mount";
-    argv[1] = "-t";
-    snprintf(fs_opt, sizeof(fs_opt), "%s", fs_type[0] ? fs_type : "auto");
-    argv[2] = fs_opt;
+    argv[argc++] = "/bin/mount";
+    argv[argc++] = "-n";   /* skip /etc/mtab update */
 
-    if (options[0]) {
-        argv[3] = "-o";
-        snprintf(mount_opt, sizeof(mount_opt), "%s", options);
-        argv[4] = mount_opt;
-        argv[5] = (char *)device;
-        argv[6] = (char *)mount_point;
-        argv[7] = NULL;
-    } else {
-        argv[3] = (char *)device;
-        argv[4] = (char *)mount_point;
-        argv[5] = NULL;
+    if (fs_type && fs_type[0] && strcmp(fs_type, "auto") != 0) {
+        argv[argc++] = "-t";
+        snprintf(fs_opt, sizeof(fs_opt), "%s", fs_type);
+        argv[argc++] = fs_opt;
     }
+
+    /* Chỉ thêm -o nếu có options; KHÔNG dùng errors=continue vì chỉ
+     * hợp lệ với ext2/3/4, không hợp lệ với vfat/exfat/ntfs */
+    if (options && options[0] && strcmp(options, "rw") != 0) {
+        argv[argc++] = "-o";
+        snprintf(mount_opt, sizeof(mount_opt), "%s", options);
+        argv[argc++] = mount_opt;
+    }
+
+    argv[argc++] = (char *)device;
+    argv[argc++] = (char *)mount_point;
+    argv[argc]   = NULL;
+
+    printk(KERN_INFO "usb_bridge: exec: mount -n%s%s %s %s\n",
+           (fs_type && fs_type[0] && strcmp(fs_type, "auto") != 0) ? " -t " : " ",
+           (fs_type && fs_type[0] && strcmp(fs_type, "auto") != 0) ? fs_type : "",
+           device, mount_point);
 
     ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
     if (ret < 0) {
@@ -265,9 +277,13 @@ static long usb_bridge_ioctl(struct file *f, unsigned int cmd, unsigned long arg
         margs.mount_point[USB_MAX_PATH_LEN - 1] = '\0';
         margs.fs_type[USB_MAX_FSTYPE_LEN - 1] = '\0';
         margs.options[USB_MAX_OPTIONS_LEN - 1] = '\0';
+        printk(KERN_INFO "usb_bridge: mount request %s -> %s\n",
+               margs.device, margs.mount_point);
         ret = run_mount_helper(margs.device, margs.mount_point,
                                margs.fs_type, margs.options);
         if (ret == 0) {
+            printk(KERN_INFO "usb_bridge: mount OK %s -> %s\n",
+                   margs.device, margs.mount_point);
             int track_ret = track_mount(margs.device, margs.mount_point);
             if (track_ret < 0) {
                 int rollback_ret;
@@ -291,15 +307,22 @@ static long usb_bridge_ioctl(struct file *f, unsigned int cmd, unsigned long arg
             break;
         }
         uargs.mount_point[USB_MAX_PATH_LEN - 1] = '\0';
-        if (!is_mount_tracked(uargs.mount_point)) {
-            ret = -EPERM;
-            printk(KERN_WARNING "usb_bridge: reject unmount of unmanaged mount %s\n",
+        ret = validate_path(uargs.mount_point);
+        if (ret < 0) {
+            printk(KERN_WARNING "usb_bridge: unmount rejected bad path %s\n",
                    uargs.mount_point);
             break;
         }
+        printk(KERN_INFO "usb_bridge: unmount request %s (tracked=%d)\n",
+               uargs.mount_point, is_mount_tracked(uargs.mount_point));
         ret = run_umount_helper(uargs.mount_point);
-        if (ret == 0)
+        if (ret == 0) {
+            printk(KERN_INFO "usb_bridge: unmount OK %s\n", uargs.mount_point);
             untrack_mount(uargs.mount_point);
+        } else {
+            printk(KERN_ERR "usb_bridge: unmount failed %s (ret=%d)\n",
+                   uargs.mount_point, ret);
+        }
         break;
     }
 
@@ -354,11 +377,15 @@ static long usb_bridge_ioctl(struct file *f, unsigned int cmd, unsigned long arg
 
         n = do_kernel_read(rargs->file_path, rargs->content, USB_MAX_CONTENT_LEN);
         if (n < 0) {
+            printk(KERN_ERR "usb_bridge: read_text failed %s (ret=%zd)\n",
+                   rargs->file_path, n);
             ret = n;
             kfree(rargs);
             break;
         }
 
+        printk(KERN_INFO "usb_bridge: read_text OK %s (%zd bytes)\n",
+               rargs->file_path, n);
         rargs->content_len = n;
         if (copy_to_user((void __user *)arg, rargs, sizeof(*rargs))) {
             ret = -EFAULT;
@@ -400,8 +427,12 @@ static long usb_bridge_ioctl(struct file *f, unsigned int cmd, unsigned long arg
 
         n = do_kernel_write(wargs->file_path, wargs->content, wargs->content_len);
         if (n < 0) {
+            printk(KERN_ERR "usb_bridge: write_text failed %s (ret=%zd)\n",
+                   wargs->file_path, n);
             ret = n;
         } else {
+            printk(KERN_INFO "usb_bridge: write_text OK %s (%u bytes)\n",
+                   wargs->file_path, wargs->content_len);
             ret = 0;
         }
         kfree(wargs);
@@ -431,6 +462,14 @@ static long usb_bridge_ioctl(struct file *f, unsigned int cmd, unsigned long arg
 
         ret = do_kernel_copy(cargs.src_path, cargs.dst_path, &copied);
         cargs.bytes_copied = copied;
+
+        if (ret < 0) {
+            printk(KERN_ERR "usb_bridge: copy failed %s -> %s (ret=%d)\n",
+                   cargs.src_path, cargs.dst_path, ret);
+        } else {
+            printk(KERN_INFO "usb_bridge: copy OK %s -> %s (%u bytes)\n",
+                   cargs.src_path, cargs.dst_path, copied);
+        }
 
         if (copy_to_user((void __user *)arg, &cargs, sizeof(cargs))) {
             ret = -EFAULT;

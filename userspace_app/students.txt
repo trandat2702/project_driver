@@ -1,3 +1,4 @@
-# code|name|class|dob|gpa
-CT07|Tran Quoc D A Yamate|CT07C|27/02/2004|4.00
-CT070310|Tran Quoc Toan|CT07C|27/02/2004|4.00
+﻿Mã SV,Họ và Tên,Lớp,Ngày Sinh,GPA
+CAT123123,Tran Quoc D A Yamate,CT07C,27/02/2004,4.00
+CAT1231231,Tran Quoc D A Yamate,CT07C,27/02/2004,4.00
+

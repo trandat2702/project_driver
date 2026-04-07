@@ -1,0 +1,17 @@
+module usb_bridge_selinux 1.0;
+
+require {
+    type kernel_t;
+    type mount_exec_t;
+    type fs_t;
+    type unlabeled_t;
+    class file { execute execute_no_trans open read getattr };
+    class filesystem { mount unmount };
+}
+
+# Allow kernel_t (usb_bridge module) to execute mount/umount binary
+allow kernel_t mount_exec_t:file { execute execute_no_trans open read getattr };
+
+# Allow mount/unmount filesystem operations
+allow kernel_t fs_t:filesystem { mount unmount };
+allow kernel_t unlabeled_t:filesystem { mount unmount };

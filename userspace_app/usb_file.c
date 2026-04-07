@@ -202,9 +202,9 @@ int usb_read_text_file(const char *mount_path,
     return read_via_libc(full_path, output, output_size);
 }
 
-/* Fallback: dùng udisksctl mount, trả về mount point thực qua actual_mp_out */
 static int udisks_mount_fallback(const char *device,
-                                 char *actual_mp_out, size_t actual_mp_sz) {
+                                 char *actual_mp_out,
+                                 size_t actual_mp_sz) {
     char cmd[512];
     char out[512] = {0};
     FILE *fp;
@@ -213,62 +213,54 @@ static int udisks_mount_fallback(const char *device,
     snprintf(cmd, sizeof(cmd),
              "/usr/bin/udisksctl mount -b %.400s 2>&1", device);
     fp = popen(cmd, "r");
-    if (!fp) return -1;
+    if (!fp)
+        return -errno;
 
     if (fgets(out, sizeof(out), fp) == NULL)
         out[0] = '\0';
-    status = pclose(fp);
 
+    status = pclose(fp);
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
         fprintf(stderr, "udisksctl mount failed: %s\n", out);
-        return -1;
+        return -EIO;
     }
 
-    fprintf(stderr, "udisksctl: %s\n", out);
-
-    /* output: "Mounted /dev/sdb2 at /run/media/dat/USB." */
     if (actual_mp_out && actual_mp_sz > 0) {
         const char *at = strstr(out, " at ");
         if (at) {
             strncpy(actual_mp_out, at + 4, actual_mp_sz - 1);
             actual_mp_out[actual_mp_sz - 1] = '\0';
-            /* strip trailing dot/newline */
-            size_t len = strlen(actual_mp_out);
-            while (len > 0 &&
-                   (actual_mp_out[len-1] == '.' ||
-                    actual_mp_out[len-1] == '\n' ||
-                    actual_mp_out[len-1] == '\r'))
-                actual_mp_out[--len] = '\0';
+            while (actual_mp_out[0] != '\0') {
+                size_t len = strlen(actual_mp_out);
+                char last = actual_mp_out[len - 1];
+                if (last != '.' && last != '\n' && last != '\r')
+                    break;
+                actual_mp_out[len - 1] = '\0';
+            }
         }
     }
+
+    fprintf(stderr, "udisksctl: %s\n", out);
     return 0;
 }
 
-/* Fallback: dùng udisksctl unmount theo device */
 static int udisks_unmount_fallback(const char *mount_point) {
     char device[MAX_MOUNT_PATH] = {0};
-    char cmd[512];
-    FILE *fp;
-    int status;
+    char *const argv_device[] = {
+        "/usr/bin/udisksctl", "unmount", "-b", device, NULL
+    };
+    char *const argv_path[] = {
+        "/usr/bin/udisksctl", "unmount", "-b", (char *)mount_point, NULL
+    };
 
-    /* Tìm device theo mount point trong /proc/mounts */
-    if (find_device_for_mount_point(mount_point, device, sizeof(device)) < 0) {
-        /* thử trực tiếp bằng mount_point như device */
-        strncpy(device, mount_point, sizeof(device) - 1);
-    }
+    if (find_device_for_mount_point(mount_point, device, sizeof(device)) == 0)
+        return run_command_wait(argv_device);
 
-    snprintf(cmd, sizeof(cmd),
-             "/usr/bin/udisksctl unmount -b %.400s 2>&1", device);
-    fp = popen(cmd, "r");
-    if (!fp) return -1;
-
-    status = pclose(fp);
-    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+    return run_command_wait(argv_path);
 }
 
 int usb_mount(const char *device, const char *mount_point,
               const char *fs_type, const char *options) {
-    /* 1. Thử qua driver trước */
     if (usb_driver_available()) {
         int ret = usb_driver_mount(device, mount_point, fs_type, options);
         if (ret == 0) {
@@ -281,21 +273,19 @@ int usb_mount(const char *device, const char *mount_point,
         fprintf(stderr, "Driver not available, trying udisksctl...\n");
     }
 
-    /* 2. Fallback: udisksctl (không cần root, không bị SELinux chặn) */
     return udisks_mount_fallback(device, NULL, 0);
 }
 
-/* Giống usb_mount nhưng trả về mount point thực tế qua actual_mp_out
- * (dùng khi udisksctl chọn mount point khác /tmp/usb_bridge_*) */
 int usb_mount_detect(const char *device, const char *mount_point,
                      const char *fs_type, const char *options,
                      char *actual_mp_out, size_t actual_mp_sz) {
-    /* 1. Thử qua driver */
     if (usb_driver_available()) {
         int ret = usb_driver_mount(device, mount_point, fs_type, options);
         if (ret == 0) {
-            if (actual_mp_out && actual_mp_sz > 0)
+            if (actual_mp_out && actual_mp_sz > 0) {
                 strncpy(actual_mp_out, mount_point, actual_mp_sz - 1);
+                actual_mp_out[actual_mp_sz - 1] = '\0';
+            }
             fprintf(stderr, "Mount via driver OK: %s at %s\n",
                     device, mount_point);
             return 0;
@@ -305,24 +295,13 @@ int usb_mount_detect(const char *device, const char *mount_point,
         fprintf(stderr, "Driver not available, trying udisksctl...\n");
     }
 
-    /* 2. Fallback: udisksctl và trả mount point thực */
-    char detected[512] = {0};
-    if (udisks_mount_fallback(device, detected, sizeof(detected)) != 0)
-        return -1;
-
-    if (actual_mp_out && actual_mp_sz > 0 && detected[0])
-        strncpy(actual_mp_out, detected, actual_mp_sz - 1);
-    else if (actual_mp_out && actual_mp_sz > 0)
-        strncpy(actual_mp_out, mount_point, actual_mp_sz - 1);
-
-    return 0;
+    return udisks_mount_fallback(device, actual_mp_out, actual_mp_sz);
 }
 
 int usb_unmount(const char *mount_point) {
     if (!mount_point || mount_point[0] == '\0')
         return -EINVAL;
 
-    /* 1. Thử qua driver */
     if (usb_driver_available()) {
         int ret = usb_driver_unmount(mount_point);
         if (ret == 0) {
@@ -334,13 +313,11 @@ int usb_unmount(const char *mount_point) {
         fprintf(stderr, "Driver not available, trying udisksctl...\n");
     }
 
-    /* 2. Fallback: udisksctl */
     if (udisks_unmount_fallback(mount_point) == 0) {
         fprintf(stderr, "Unmount via udisksctl OK: %s\n", mount_point);
         return 0;
     }
 
-    /* 3. Last resort: umount2 syscall trực tiếp */
     return usb_unmount_system(mount_point);
 }
 

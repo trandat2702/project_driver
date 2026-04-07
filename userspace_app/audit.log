@@ -35,3 +35,313 @@
 [2026-04-08 01:58:02] [admin] Mounted USB /dev/sdb2 at /tmp/usb_bridge_sdb2 via driver
 [2026-04-08 02:09:21] [admin] Unmounted USB at /tmp/usb_bridge_sdb2 via driver
 [2026-04-08 02:09:25] [admin] Mounted USB /dev/sdb2 at /tmp/usb_bridge_sdb2
+[2026-04-08 03:05:39] [admin] Unmounted USB at /tmp/usb_bridge_sdb2 via driver
+[2026-04-08 03:05:54] [admin] Mounted USB /dev/sdb2 at /tmp/usb_bridge_sdb2
+[2026-04-08 03:06:17] [admin] USB Read: /tmp/usb_bridge_sdb2/students.txt
+[2026-04-08 03:06:27] [admin] USB Read: /tmp/usb_bridge_sdb2/students.txt
+[2026-04-08 03:06:28] [admin] USB Read: /tmp/usb_bridge_sdb2/students.txt
+[2026-04-08 03:06:39] [admin] USB Read: /tmp/usb_bridge_sdb2/danhsachsv.txt
+[2026-04-08 03:06:59] [admin] Saved data to file: students.txt
+[2026-04-08 03:07:01] [admin] Loaded data from file: students.txt
+[2026-04-08 03:07:13] [admin] USB Read: /tmp/usb_bridge_sdb2/students.txt
+[2026-04-08 03:08:09] [admin] Loaded data from file: students.txt
+[2026-04-08 03:08:46] [admin] USB Read: /tmp/usb_bridge_sdb2/students.txt
+[2026-04-08 03:09:30] [admin] USB Read: /tmp/usb_bridge_sdb2/danhsachsv.txt
+[2026-04-08 03:09:46] [admin] USB Read: /tmp/usb_bridge_sdb2/students.txt
+[2026-04-08 03:11:25] [admin] USB Read: /tmp/usb_bridge_sdb2/students.txt
+[2026-04-08 03:11:28] [admin] USB Read: /tmp/usb_bridge_sdb2/danhsachsv.txt
+[2026-04-08 03:20:22] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 03:21:04] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 03:21:26] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 03:24:06] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 03:24:29] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:24:36] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:24:40] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:24:52] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:25:18] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:25:21] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:25:24] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:25:27] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:26:04] [admin] USB Copy To: students.txt
+[2026-04-08 03:26:23] [admin] Loaded data from file: students.txt
+[2026-04-08 03:26:27] [admin] Loaded data from file: students.txt
+[2026-04-08 03:26:43] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:26:46] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:26:52] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:26:54] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:27:02] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:27:04] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:27:06] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:27:23] [admin] USB Copy To: students.txt
+[2026-04-08 03:27:31] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:27:33] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:27:36] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:27:36] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:27:39] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:27:42] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:27:49] [admin] USB Copy To: students.txt
+[2026-04-08 03:27:53] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:27:58] [admin] Loaded data from file: students.txt
+[2026-04-08 03:28:50] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 03:48:45] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 03:49:15] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:49:19] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:49:26] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:49:33] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:49:35] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:49:43] [admin] USB Copy To: students.txt
+[2026-04-08 03:49:48] [admin] Loaded data from file: students.txt
+[2026-04-08 03:49:50] [admin] Saved data to file: students.txt
+[2026-04-08 03:50:20] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:50:23] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:50:55] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 03:51:12] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:51:31] [admin] Loaded data from file: students.txt
+[2026-04-08 03:52:06] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:52:17] [admin] USB Copy To: students.txt
+[2026-04-08 03:52:23] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:52:46] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:52:46] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:53:27] [admin] Updated student: CT0712312312311A -> CT
+[2026-04-08 03:53:48] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:53:49] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:54:12] [admin] USB Copy To: danhsachsv.txt
+[2026-04-08 03:54:21] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:54:24] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:54:31] [admin] Loaded data from file: students.txt
+[2026-04-08 03:54:38] [admin] Updated student: CT0712312312311A -> CT
+[2026-04-08 03:54:41] [admin] Saved data to file: students.txt
+[2026-04-08 03:54:54] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:54:55] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:55:11] [admin] USB Copy To: students.txt
+[2026-04-08 03:55:15] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:55:17] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:55:17] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:55:17] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:55:18] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:55:20] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:55:45] [admin] Updated student: CT -> CT123123
+[2026-04-08 03:55:46] [admin] Saved data to file: students.txt
+[2026-04-08 03:55:48] [admin] Saved data to file: students.txt
+[2026-04-08 03:56:06] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:56:08] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:56:25] [admin] USB Copy To: danhsachsv.txt
+[2026-04-08 03:56:31] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:56:40] [admin] USB Copy To: students.txt
+[2026-04-08 03:56:50] [admin] Loaded data from file: students.txt
+[2026-04-08 03:56:52] [admin] Loaded data from file: students.txt
+[2026-04-08 03:57:07] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:57:21] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:57:24] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:57:26] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:57:28] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:58:03] [admin] USB Copy To: students.txt
+[2026-04-08 03:58:07] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:58:10] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:58:17] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:58:21] [admin] USB Copy To: students.txt
+[2026-04-08 03:58:37] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 03:58:46] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:58:55] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 03:59:05] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 03:59:09] [admin] Loaded data from file: students.txt
+[2026-04-08 04:00:12] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 04:07:00] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:07:21] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:07:31] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:08:52] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:08:56] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:09:13] [admin] USB Copy To: students.txt
+[2026-04-08 04:09:21] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:09:25] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:09:33] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:09:35] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:09:43] [admin] USB Copy From: students.txt
+[2026-04-08 04:10:39] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 04:18:25] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:18:55] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:19:17] [admin] Saved data to file: students.txt
+[2026-04-08 04:19:31] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:19:42] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:20:26] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:20:32] [admin] USB Copy To: students.txt
+[2026-04-08 04:20:36] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:20:38] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:20:42] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:20:45] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:21:13] [admin] Saved data to file: students.txt
+[2026-04-08 04:21:14] [admin] Saved data to file: students.txt
+[2026-04-08 04:21:14] [admin] Saved data to file: students.txt
+[2026-04-08 04:21:14] [admin] Saved data to file: students.txt
+[2026-04-08 04:21:19] [admin] Loaded data from file: students.txt
+[2026-04-08 04:21:29] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:21:35] [admin] USB Copy To: students.txt
+[2026-04-08 04:21:38] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:21:42] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:21:52] [admin] USB Copy To: students.txt
+[2026-04-08 04:21:55] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:21:59] [admin] Loaded data from file: students.txt
+[2026-04-08 04:22:14] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:22:32] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:22:35] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:23:11] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 04:23:27] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 04:23:28] [admin] Saved data to file: students.txt
+[2026-04-08 04:23:30] [admin] Loaded data from file: students.txt
+[2026-04-08 04:23:44] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:23:47] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:24:00] [admin] USB Copy To: students.txt
+[2026-04-08 04:24:03] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:24:04] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:24:06] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:24:07] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:24:08] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:24:10] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:24:12] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:24:36] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 04:24:49] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 04:25:06] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:25:08] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:25:12] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:25:21] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:25:34] [admin] USB Copy To: config.txt
+[2026-04-08 04:25:40] [admin] USB Read: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:26:18] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:26:47] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 04:27:03] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 04:27:06] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 04:27:19] [admin] USB Read: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:27:22] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:27:42] [admin] USB Copy To: students.txt
+[2026-04-08 04:27:47] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:27:49] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:27:58] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:28:03] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:28:12] [admin] USB Copy To: students.txt
+[2026-04-08 04:28:15] [admin] USB Read: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:28:19] [admin] USB Read: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:28:22] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:28:24] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:28:27] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:28:36] [admin] USB Copy To: students.txt
+[2026-04-08 04:28:39] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:28:46] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:28:53] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:29:00] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:29:08] [admin] USB Copy To: students.txt
+[2026-04-08 04:29:10] [admin] USB Read: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:29:13] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:29:30] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:29:34] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:29:41] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:29:44] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:29:46] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:29:48] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:29:53] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:30:02] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:30:14] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 04:30:19] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 04:30:22] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 04:30:28] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 04:30:43] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:31:14] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:31:23] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 04:31:26] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:31:27] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 04:31:29] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 04:31:36] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 04:31:41] [admin] Loaded data from file: students.txt
+[2026-04-08 04:32:27] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 04:32:34] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:35:18] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 04:36:27] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:36:31] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 04:38:06] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:38:23] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 04:38:37] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:38:39] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 04:41:12] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:41:18] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 04:44:56] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:45:02] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 04:45:27] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:45:29] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 04:47:25] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:48:31] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 04:48:36] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:50:58] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 04:51:01] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:56:21] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 04:56:24] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 04:58:41] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 04:58:44] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 05:02:09] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 05:02:13] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 05:05:11] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 05:05:15] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 05:07:41] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 05:07:44] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 05:10:41] [admin] Unmounted USB at /run/media/dat/VTOYEFI
+[2026-04-08 05:10:47] [admin] Mounted USB /dev/sdb2 at /run/media/dat/VTOYEFI
+[2026-04-08 05:10:52] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:10:53] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:10:57] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:11:01] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:11:05] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:11:16] [admin] Updated student: CAT -> CAT123123
+[2026-04-08 05:11:19] [admin] Added student: CAT1231231
+[2026-04-08 05:11:27] [admin] Added student: CAT1231231
+[2026-04-08 05:11:28] [admin] Saved data to file: students.txt
+[2026-04-08 05:11:31] [admin] Loaded data from file: students.txt
+[2026-04-08 05:11:44] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:11:51] [admin] USB Copy To: students.txt
+[2026-04-08 05:11:53] [admin] USB Read: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:11:55] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:12:04] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:12:06] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:12:16] [admin] USB Copy From: config.txt
+[2026-04-08 05:12:20] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 05:12:43] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:12:48] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:12:50] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:12:59] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:13:06] [admin] USB Copy From: config.txt
+[2026-04-08 05:13:10] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 05:13:24] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:13:27] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:13:30] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:13:38] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:13:40] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:13:47] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:13:49] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:13:51] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:13:58] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:14:12] [admin] USB Copy From: config.txt
+[2026-04-08 05:14:16] [admin] Rejected import file (invalid format or business rules): students.txt
+[2026-04-08 05:14:33] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:14:44] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 05:14:57] [admin] Rejected import file (invalid format or business rules): /home/dat/project_driver/userspace_app/danhsachsv.txt
+[2026-04-08 05:16:06] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:16:11] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:16:20] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:16:24] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:16:24] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:16:25] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:16:25] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:16:33] [admin] USB Copy From: config.txt
+[2026-04-08 05:16:55] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:17:19] [admin] Exported CSV: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:17:31] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:17:37] [admin] USB Write: /run/media/dat/VTOYEFI/config.txt
+[2026-04-08 05:17:44] [admin] USB Copy From: config.txt
+[2026-04-08 05:22:13] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:22:24] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 05:22:35] [admin] Loaded data from file: students.txt
+[2026-04-08 05:23:01] [admin] Added student: CAT1231231
+[2026-04-08 05:23:03] [admin] Saved data to file: students.txt
+[2026-04-08 05:23:07] [admin] Loaded data from file: students.txt
+[2026-04-08 05:23:20] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:23:24] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 05:23:27] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 05:23:32] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 05:23:40] [admin] Loaded data from file: students.txt
