@@ -20,31 +20,17 @@
 /* ========== Driver communication ========== */
 
 #ifndef UNIT_TESTING
-/*
- * Giao tiếp tối giản với character driver.
- *
- * Nếu driver đã được nạp, chuỗi đầu vào sẽ đi qua kernel module để chuẩn hóa.
- * Nếu mở device thất bại, hàm trả lỗi để lớp gọi phía trên tự quyết định fallback.
- *
- * Vì sao tách riêng hàm này:
- * - phần còn lại của student.c không cần biết chi tiết open/write/read
- * - khi test unit, hàm này có thể bị thay bằng mock để không phụ thuộc kernel
- */
 int normalize_via_driver(const char *input, char *output, int buf_size) {
     int fd = open("/dev/string_norm", O_RDWR);
     if (fd < 0) {
-        perror("Cannot open /dev/string_norm");
-        fprintf(stderr, "Hint: sudo insmod string_norm.ko\n");
         return -1;
     }
 
     ssize_t w = write(fd, input, strlen(input));
-    /* write() gửi chuỗi thô xuống driver; driver sẽ xử lý và lưu kết quả nội bộ. */
-    if (w < 0) { perror("write"); close(fd); return -1; }
+    if (w < 0) { close(fd); return -1; }
 
     ssize_t r = read(fd, output, buf_size - 1);
-    /* read() lấy lại chuỗi đã được driver chuẩn hóa. */
-    if (r < 0) { perror("read");  close(fd); return -1; }
+    if (r < 0) { close(fd); return -1; }
     output[r] = '\0';
 
     close(fd);
@@ -88,17 +74,17 @@ static void sanitize_name_alpha_space(const char *input, char *output, int buf_s
 }
 
 int normalize_name_best_effort(const char *input, char *output, int buf_size) {
-    char driver_out[MAX_NAME_LEN];
-
     if (!output || buf_size <= 0) return -1;
 
-    if (normalize_via_driver(input, driver_out, sizeof(driver_out)) < 0) {
-        return -1;
-    } else {
-        /* Driver output is still filtered to reject punctuation in display name. */
-        sanitize_name_alpha_space(driver_out, output, buf_size);
+    if (normalize_via_driver(input, output, buf_size) == 0) {
+        char filtered[MAX_NAME_LEN];
+        sanitize_name_alpha_space(output, filtered, sizeof(filtered));
+        strncpy(output, filtered, buf_size - 1);
+        output[buf_size - 1] = '\0';
+        return 0;
     }
 
+    sanitize_name_alpha_space(input, output, buf_size);
     return 0;
 }
 

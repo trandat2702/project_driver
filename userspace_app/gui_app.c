@@ -17,7 +17,11 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <time.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "auth.h"
+#include "usb_driver_client.h"
 #include "student.h"
 #include "usb_file.h"
 #include "audit.h"
@@ -69,10 +73,6 @@ typedef struct {
     GtkWidget *search_entry;
     GtkWidget *file_entry;
 
-    GtkWidget *usb_mount_entry;
-    GtkWidget *usb_file_entry;
-    GtkWidget *usb_text_view;
-    GtkWidget *btn_usb_write;
     GtkWidget *btn_export_txt;
     GtkWidget *btn_export_csv;
 
@@ -391,10 +391,6 @@ static void on_login_clicked(GtkButton *btn, gpointer user_data) {
         gtk_widget_set_visible(app->form_card, is_admin);
         gtk_widget_set_no_show_all(app->form_card, !is_admin);
     }
-    if (app->btn_usb_write) {
-        gtk_widget_set_visible(app->btn_usb_write, is_admin);
-        gtk_widget_set_no_show_all(app->btn_usb_write, !is_admin);
-    }
     if (app->btn_export_txt) {
         gtk_widget_set_visible(app->btn_export_txt, TRUE);
         gtk_widget_set_no_show_all(app->btn_export_txt, FALSE);
@@ -565,70 +561,6 @@ static void on_load_clicked(GtkButton *btn, gpointer user_data) {
     }
 }
 
-static void get_usb_text(AppState *app, char *out, size_t out_size) {
-    GtkTextBuffer *buffer;
-    GtkTextIter start, end;
-    gchar *text;
-
-    /* Lấy toàn bộ nội dung TextView làm payload cho thao tác ghi file USB. */
-    out[0] = '\0';
-    buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(app->usb_text_view));
-    gtk_text_buffer_get_start_iter(buffer, &start);
-    gtk_text_buffer_get_end_iter(buffer, &end);
-    text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
-    if (text) {
-        strncpy(out, text, out_size - 1);
-        out[out_size - 1] = '\0';
-        g_free(text);
-    }
-}
-
-static void set_usb_text(AppState *app, const char *text) {
-    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(app->usb_text_view));
-    gtk_text_buffer_set_text(buffer, text ? text : "", -1);
-}
-
-static void on_usb_write_clicked(GtkButton *btn, gpointer user_data) {
-    (void)btn;
-    AppState *app = (AppState *)user_data;
-    const char *mount_path = gtk_entry_get_text(GTK_ENTRY(app->usb_mount_entry));
-    const char *file_name  = gtk_entry_get_text(GTK_ENTRY(app->usb_file_entry));
-    char content[USB_TEXT_BUF_SIZE];
-
-    if (is_blank(mount_path) || is_blank(file_name)) {
-        set_status(app, "Duong dan USB hoac ten file khong duoc de trong");
-        return;
-    }
-    get_usb_text(app, content, sizeof(content));
-    /* Ghi file thông qua module usb_file.c ở user space, không đi qua usb_driver. */
-    if (usb_write_text_file(mount_path, file_name, content) == 0) {
-        set_status(app, "Ghi USB thành công: %s/%s", mount_path, file_name);
-        log_audit(app->logged_in_user, "Wrote to USB: %s/%s", mount_path, file_name);
-    } else
-        set_status(app, "Ghi USB that bai");
-}
-
-static void on_usb_read_clicked(GtkButton *btn, gpointer user_data) {
-    (void)btn;
-    AppState *app = (AppState *)user_data;
-    const char *mount_path = gtk_entry_get_text(GTK_ENTRY(app->usb_mount_entry));
-    const char *file_name  = gtk_entry_get_text(GTK_ENTRY(app->usb_file_entry));
-    char output[USB_TEXT_BUF_SIZE];
-
-    if (is_blank(mount_path) || is_blank(file_name)) {
-        set_status(app, "Duong dan USB hoac ten file khong duoc de trong");
-        return;
-    }
-    /* Đọc file text từ đường dẫn mount và đổ nội dung lại vào TextView. */
-    if (usb_read_text_file(mount_path, file_name, output, sizeof(output)) == 0) {
-        set_usb_text(app, output);
-        set_status(app, "Doc USB thành công: %s/%s", mount_path, file_name);
-        log_audit(app->logged_in_user, "Read from USB: %s/%s", mount_path, file_name);
-    } else {
-        set_status(app, "Doc USB that bai");
-    }
-}
-
 static void on_export_csv_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     AppState *app = (AppState *)user_data;
@@ -696,43 +628,6 @@ static void on_browse_file_clicked(GtkButton *btn, gpointer user_data) {
     if (choose_path(app, GTK_FILE_CHOOSER_ACTION_SAVE,
                     "Chon file du lieu sinh vien", app->file_entry))
         set_status(app, "Da chon file du lieu");
-}
-
-static void on_browse_usb_mount_clicked(GtkButton *btn, gpointer user_data) {
-    (void)btn;
-    AppState *app = (AppState *)user_data;
-    if (choose_path(app, GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER,
-                    "Chon thu muc mount USB", app->usb_mount_entry))
-        set_status(app, "Da chon thu muc USB");
-}
-
-static void on_browse_usb_file_clicked(GtkButton *btn, gpointer user_data) {
-    (void)btn;
-    AppState *app = (AppState *)user_data;
-    GtkWidget *dialog;
-
-    dialog = gtk_file_chooser_dialog_new("Chon file tren USB",
-                                         GTK_WINDOW(app->window),
-                                         GTK_FILE_CHOOSER_ACTION_OPEN,
-                                         "_Huy", GTK_RESPONSE_CANCEL,
-                                         "_Chon", GTK_RESPONSE_ACCEPT,
-                                         NULL);
-
-    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-        char *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-        if (path) {
-            char *dir = g_path_get_dirname(path);
-            char *base = g_path_get_basename(path);
-            gtk_entry_set_text(GTK_ENTRY(app->usb_mount_entry), dir ? dir : "");
-            gtk_entry_set_text(GTK_ENTRY(app->usb_file_entry), base ? base : "");
-            set_status(app, "Da chon file USB: %s", base ? base : "");
-            g_free(dir);
-            g_free(base);
-            g_free(path);
-        }
-    }
-
-    gtk_widget_destroy(dialog);
 }
 
 static void on_change_password_clicked(GtkButton *btn, gpointer user_data) {
@@ -1067,6 +962,657 @@ static GtkWidget *build_login_view(AppState *app) {
     return root;
 }
 
+/* ── USB Storage Manager Dialog ─────────────────────────────────────────── */
+
+typedef struct {
+    GtkWidget *dialog;
+    GtkWidget *status_connected;
+    GtkWidget *status_mounted;
+    GtkWidget *status_mount_point;
+    GtkWidget *status_reads;
+    GtkWidget *status_writes;
+    GtkWidget *status_bar;
+    GtkWidget *file_tree;
+    GtkListStore *file_store;
+    GtkWidget *file_entry;
+    GtkWidget *text_view;
+    GtkWidget *log_view;
+    GtkTextBuffer *log_buffer;
+    char current_mount[256];
+    int total_reads;
+    int total_writes;
+    AppState *app;
+} UsbManagerState;
+
+static void usb_mgr_log(UsbManagerState *st, const char *fmt, ...) {
+    if (!st->log_buffer) return;
+    char msg[512], timestamp[32], full_msg[600];
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    strftime(timestamp, sizeof(timestamp), "[%H:%M:%S]", t);
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, args);
+    va_end(args);
+    snprintf(full_msg, sizeof(full_msg), "%s %s\n", timestamp, msg);
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(st->log_buffer, &end);
+    gtk_text_buffer_insert(st->log_buffer, &end, full_msg, -1);
+    if (st->log_view) {
+        GtkTextMark *mark = gtk_text_buffer_get_insert(st->log_buffer);
+        gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(st->log_view), mark, 0.0, TRUE, 0.0, 1.0);
+    }
+}
+
+static void usb_mgr_update_status(UsbManagerState *st) {
+    char buf[32];
+    
+    /* Check if stored mount point is still valid */
+    int mounted = 0;
+    int connected = 0;
+    
+    if (st->current_mount[0] != '\0') {
+        /* Verify mount point still exists and is accessible */
+        struct stat st_buf;
+        if (stat(st->current_mount, &st_buf) == 0 && S_ISDIR(st_buf.st_mode)) {
+            /* Also verify it's still in /proc/mounts */
+            UsbMount mounts[MAX_USB_MOUNTS];
+            int n = detect_usb_mounts(mounts, MAX_USB_MOUNTS);
+            for (int i = 0; i < n; i++) {
+                if (strcmp(mounts[i].path, st->current_mount) == 0) {
+                    mounted = 1;
+                    connected = 1;
+                    break;
+                }
+            }
+            if (!mounted) {
+                /* Mount point no longer valid, clear it */
+                usb_mgr_log(st, "USB disconnected: %s", st->current_mount);
+                st->current_mount[0] = '\0';
+                gtk_list_store_clear(st->file_store);
+            }
+        } else {
+            /* Directory not accessible, USB removed */
+            usb_mgr_log(st, "USB removed: %s", st->current_mount);
+            st->current_mount[0] = '\0';
+            gtk_list_store_clear(st->file_store);
+        }
+    }
+    
+    /* Check for any connected USB even if not mounted by us */
+    if (!connected) {
+        UsbMount mounts[MAX_USB_MOUNTS];
+        int n = detect_usb_mounts(mounts, MAX_USB_MOUNTS);
+        connected = (n > 0);
+    }
+    
+    gtk_label_set_text(GTK_LABEL(st->status_connected), connected ? "Yes" : "No");
+    gtk_label_set_text(GTK_LABEL(st->status_mounted), mounted ? "Yes" : "No");
+    gtk_label_set_text(GTK_LABEL(st->status_mount_point), mounted ? st->current_mount : "N/A");
+    snprintf(buf, sizeof(buf), "%d", st->total_reads);
+    gtk_label_set_text(GTK_LABEL(st->status_reads), buf);
+    snprintf(buf, sizeof(buf), "%d", st->total_writes);
+    gtk_label_set_text(GTK_LABEL(st->status_writes), buf);
+    
+    if (mounted)
+        gtk_label_set_markup(GTK_LABEL(st->status_bar), "<span foreground='#4CAF50' font_weight='bold'>● USB Mounted</span>");
+    else if (connected)
+        gtk_label_set_markup(GTK_LABEL(st->status_bar), "<span foreground='#FFA500' font_weight='bold'>● USB Connected (Not Mounted)</span>");
+    else
+        gtk_label_set_markup(GTK_LABEL(st->status_bar), "<span foreground='#f44336' font_weight='bold'>● No USB Connected</span>");
+}
+
+static void usb_mgr_refresh_files(UsbManagerState *st) {
+    gtk_list_store_clear(st->file_store);
+    if (st->current_mount[0] == '\0') return;
+    
+    DIR *dir = opendir(st->current_mount);
+    if (!dir) {
+        usb_mgr_log(st, "Cannot open: %s", st->current_mount);
+        return;
+    }
+    
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        char full_path[512];
+        snprintf(full_path, sizeof(full_path), "%s/%s", st->current_mount, entry->d_name);
+        struct stat file_stat;
+        if (stat(full_path, &file_stat) != 0) continue;
+        
+        const char *type = S_ISDIR(file_stat.st_mode) ? "📁 Folder" : "📄 File";
+        char size_str[32];
+        if (S_ISDIR(file_stat.st_mode)) strcpy(size_str, "-");
+        else if (file_stat.st_size < 1024) snprintf(size_str, sizeof(size_str), "%ld B", file_stat.st_size);
+        else if (file_stat.st_size < 1024*1024) snprintf(size_str, sizeof(size_str), "%.1f KB", file_stat.st_size/1024.0);
+        else snprintf(size_str, sizeof(size_str), "%.1f MB", file_stat.st_size/(1024.0*1024.0));
+        
+        GtkTreeIter iter;
+        gtk_list_store_append(st->file_store, &iter);
+        gtk_list_store_set(st->file_store, &iter, 0, entry->d_name, 1, type, 2, size_str, -1);
+    }
+    closedir(dir);
+    usb_mgr_log(st, "File list refreshed");
+}
+
+static void on_usb_mgr_mount(GtkButton *btn, gpointer data) {
+    (void)btn;
+    UsbManagerState *st = (UsbManagerState *)data;
+    UsbMount devices[MAX_USB_MOUNTS];
+    UsbMount candidates[MAX_USB_MOUNTS];
+    int total;
+    int cand_count = 0;
+    int selected = 0;
+
+    if (!usb_driver_available()) {
+        usb_mgr_log(st, "USB driver not available");
+        return;
+    }
+
+    total = detect_usb_devices(devices, MAX_USB_MOUNTS);
+    for (int i = 0; i < total && cand_count < MAX_USB_MOUNTS; i++) {
+        if (devices[i].path[0] == '\0') {
+            candidates[cand_count++] = devices[i];
+        }
+    }
+
+    if (cand_count == 0) {
+        usb_mgr_log(st, "No unmounted USB partition found");
+        return;
+    }
+
+    if (cand_count > 1) {
+        GtkWidget *sel_dialog = gtk_dialog_new_with_buttons("Select USB Partition", GTK_WINDOW(st->dialog),
+            GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT, "Cancel", GTK_RESPONSE_CANCEL, "Mount", GTK_RESPONSE_ACCEPT, NULL);
+        GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(sel_dialog));
+        GtkWidget *list_box = gtk_list_box_new();
+
+        for (int i = 0; i < cand_count; i++) {
+            char label[512];
+            snprintf(label, sizeof(label), "%.200s", candidates[i].device);
+            GtkWidget *row = gtk_label_new(label);
+            gtk_label_set_xalign(GTK_LABEL(row), 0);
+            gtk_widget_set_margin_start(row, 10);
+            gtk_widget_set_margin_end(row, 10);
+            gtk_widget_set_margin_top(row, 5);
+            gtk_widget_set_margin_bottom(row, 5);
+            gtk_list_box_insert(GTK_LIST_BOX(list_box), row, -1);
+        }
+
+        gtk_container_add(GTK_CONTAINER(content), list_box);
+        gtk_widget_show_all(sel_dialog);
+
+        if (gtk_dialog_run(GTK_DIALOG(sel_dialog)) == GTK_RESPONSE_ACCEPT) {
+            GtkListBoxRow *sel = gtk_list_box_get_selected_row(GTK_LIST_BOX(list_box));
+            if (!sel) {
+                gtk_widget_destroy(sel_dialog);
+                usb_mgr_log(st, "Mount cancelled (no partition selected)");
+                return;
+            }
+            selected = gtk_list_box_row_get_index(sel);
+        } else {
+            gtk_widget_destroy(sel_dialog);
+            usb_mgr_log(st, "Mount cancelled");
+            return;
+        }
+        gtk_widget_destroy(sel_dialog);
+    }
+
+    {
+        const char *device = candidates[selected].device;
+        const char *dev_name = strrchr(device, '/');
+        char mount_point[256];
+        struct stat st_buf;
+        int ret;
+
+        if (dev_name)
+            dev_name++;
+        else
+            dev_name = device;
+
+        snprintf(mount_point, sizeof(mount_point), "/tmp/usb_bridge_%.220s", dev_name);
+
+        if (stat(mount_point, &st_buf) == 0) {
+            if (!S_ISDIR(st_buf.st_mode)) {
+                usb_mgr_log(st, "Cannot use mount point: %s", mount_point);
+                return;
+            }
+        } else if (mkdir(mount_point, 0755) != 0) {
+            usb_mgr_log(st, "Cannot create mount point: %s", mount_point);
+            return;
+        }
+
+        usb_mgr_log(st, "Mounting %s...", device);
+        char actual_mp[256] = {0};
+        ret = usb_mount_detect(device, mount_point, "auto", "rw",
+                               actual_mp, sizeof(actual_mp));
+        if (ret == 0) {
+            /* Dùng mount point thực tế (udisksctl có thể chọn path khác) */
+            const char *used_mp = (actual_mp[0] != '\0') ? actual_mp : mount_point;
+            strncpy(st->current_mount, used_mp, sizeof(st->current_mount) - 1);
+            st->current_mount[sizeof(st->current_mount) - 1] = '\0';
+            usb_mgr_log(st, "Mounted at: %s", st->current_mount);
+            log_audit(st->app->logged_in_user, "Mounted USB %s at %s", device, st->current_mount);
+            usb_mgr_update_status(st);
+            usb_mgr_refresh_files(st);
+        } else {
+            usb_mgr_log(st, "Mount failed (driver + udisksctl both failed)");
+        }
+    }
+}
+
+static void on_usb_mgr_unmount(GtkButton *btn, gpointer data) {
+    (void)btn;
+    UsbManagerState *st = (UsbManagerState *)data;
+    int managed = 0;
+    int ownership_ret;
+    int ret;
+    const char *mode = "system";
+    
+    if (st->current_mount[0] == '\0') {
+        usb_mgr_log(st, "No USB mounted");
+        return;
+    }
+
+    ownership_ret = usb_is_driver_managed_mount(st->current_mount, &managed);
+    
+    GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(st->dialog),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        GTK_MESSAGE_QUESTION, GTK_BUTTONS_YES_NO,
+        "Unmount USB at %s?", st->current_mount);
+    
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_YES) {
+        if (ownership_ret == 0 && managed) {
+            mode = "driver";
+            usb_mgr_log(st, "Unmounting %s via driver...", st->current_mount);
+            ret = usb_unmount(st->current_mount);
+        } else {
+            if (ownership_ret < 0)
+                usb_mgr_log(st, "Ownership check unavailable, using system unmount");
+            else
+                usb_mgr_log(st, "Mount not owned by driver, using system unmount");
+            ret = usb_unmount_system(st->current_mount);
+        }
+
+        if (ret == 0) {
+            log_audit(st->app->logged_in_user, "Unmounted USB at %s via %s", st->current_mount, mode);
+            st->current_mount[0] = '\0';
+            gtk_list_store_clear(st->file_store);
+            usb_mgr_log(st, "Unmounted successfully");
+            usb_mgr_update_status(st);
+        } else {
+            usb_mgr_log(st, "Unmount failed");
+        }
+    }
+    gtk_widget_destroy(dialog);
+}
+
+static void on_usb_mgr_detect(GtkButton *btn, gpointer data) {
+    (void)btn;
+    UsbManagerState *st = (UsbManagerState *)data;
+    UsbMount mounts[MAX_USB_MOUNTS];
+    int n = detect_usb_mounts(mounts, MAX_USB_MOUNTS);
+    
+    usb_mgr_log(st, "Detecting USB devices...");
+    
+    if (n == 0) {
+        usb_mgr_log(st, "No mounted USB found");
+        return;
+    }
+    
+    if (n == 1) {
+        strncpy(st->current_mount, mounts[0].path, sizeof(st->current_mount) - 1);
+        usb_mgr_log(st, "Found USB: %s (%s)", mounts[0].path, mounts[0].device);
+        usb_mgr_update_status(st);
+        usb_mgr_refresh_files(st);
+        return;
+    }
+    
+    usb_mgr_log(st, "Found %d USB devices, select one", n);
+    GtkWidget *sel_dialog = gtk_dialog_new_with_buttons("Select USB", GTK_WINDOW(st->dialog),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT, "Cancel", GTK_RESPONSE_CANCEL, "Select", GTK_RESPONSE_ACCEPT, NULL);
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(sel_dialog));
+    GtkWidget *list_box = gtk_list_box_new();
+    
+    for (int i = 0; i < n; i++) {
+        char label[512];
+        snprintf(label, sizeof(label), "%.200s  (%.200s)", mounts[i].path, mounts[i].device);
+        GtkWidget *row = gtk_label_new(label);
+        gtk_label_set_xalign(GTK_LABEL(row), 0);
+        gtk_widget_set_margin_start(row, 10);
+        gtk_widget_set_margin_end(row, 10);
+        gtk_widget_set_margin_top(row, 5);
+        gtk_widget_set_margin_bottom(row, 5);
+        gtk_list_box_insert(GTK_LIST_BOX(list_box), row, -1);
+    }
+    
+    gtk_container_add(GTK_CONTAINER(content), list_box);
+    gtk_widget_show_all(sel_dialog);
+    
+    if (gtk_dialog_run(GTK_DIALOG(sel_dialog)) == GTK_RESPONSE_ACCEPT) {
+        GtkListBoxRow *sel = gtk_list_box_get_selected_row(GTK_LIST_BOX(list_box));
+        if (sel) {
+            int idx = gtk_list_box_row_get_index(sel);
+            if (idx >= 0 && idx < n) {
+                strncpy(st->current_mount, mounts[idx].path, sizeof(st->current_mount) - 1);
+                usb_mgr_log(st, "Selected: %s", mounts[idx].path);
+                usb_mgr_update_status(st);
+                usb_mgr_refresh_files(st);
+            }
+        }
+    }
+    gtk_widget_destroy(sel_dialog);
+}
+
+static void on_usb_mgr_refresh(GtkButton *btn, gpointer data) {
+    (void)btn;
+    UsbManagerState *st = (UsbManagerState *)data;
+    usb_mgr_update_status(st);
+    usb_mgr_refresh_files(st);
+}
+
+static void on_usb_mgr_file_selected(GtkTreeSelection *sel, gpointer data) {
+    UsbManagerState *st = (UsbManagerState *)data;
+    GtkTreeModel *model;
+    GtkTreeIter iter;
+    if (gtk_tree_selection_get_selected(sel, &model, &iter)) {
+        gchar *filename;
+        gtk_tree_model_get(model, &iter, 0, &filename, -1);
+        gtk_entry_set_text(GTK_ENTRY(st->file_entry), filename);
+        g_free(filename);
+    }
+}
+
+static void on_usb_mgr_read(GtkButton *btn, gpointer data) {
+    (void)btn;
+    UsbManagerState *st = (UsbManagerState *)data;
+    const char *filename = gtk_entry_get_text(GTK_ENTRY(st->file_entry));
+    
+    if (!filename || filename[0] == '\0') {
+        usb_mgr_log(st, "Please enter or select a filename");
+        return;
+    }
+    if (st->current_mount[0] == '\0') {
+        usb_mgr_log(st, "No USB mounted");
+        return;
+    }
+    
+    char content[4096];
+    usb_mgr_log(st, "Reading %s...", filename);
+    if (usb_read_text_file(st->current_mount, filename, content, sizeof(content)) == 0) {
+        GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(st->text_view));
+        gtk_text_buffer_set_text(buf, content, -1);
+        st->total_reads++;
+        usb_mgr_update_status(st);
+        usb_mgr_log(st, "File read successfully");
+        log_audit(st->app->logged_in_user, "USB Read: %s/%s", st->current_mount, filename);
+    } else {
+        usb_mgr_log(st, "Read failed");
+    }
+}
+
+static void on_usb_mgr_write(GtkButton *btn, gpointer data) {
+    (void)btn;
+    UsbManagerState *st = (UsbManagerState *)data;
+    const char *filename = gtk_entry_get_text(GTK_ENTRY(st->file_entry));
+    
+    if (!filename || filename[0] == '\0') {
+        usb_mgr_log(st, "Please enter a filename");
+        return;
+    }
+    if (st->current_mount[0] == '\0') {
+        usb_mgr_log(st, "No USB mounted");
+        return;
+    }
+    
+    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(st->text_view));
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(buf, &start, &end);
+    gchar *content = gtk_text_buffer_get_text(buf, &start, &end, FALSE);
+    
+    usb_mgr_log(st, "Writing %s...", filename);
+    if (usb_write_text_file(st->current_mount, filename, content) == 0) {
+        st->total_writes++;
+        usb_mgr_update_status(st);
+        usb_mgr_refresh_files(st);
+        usb_mgr_log(st, "File written successfully");
+        log_audit(st->app->logged_in_user, "USB Write: %s/%s", st->current_mount, filename);
+    } else {
+        usb_mgr_log(st, "Write failed");
+    }
+    g_free(content);
+}
+
+static void on_usb_mgr_copy_to(GtkButton *btn, gpointer data) {
+    (void)btn;
+    UsbManagerState *st = (UsbManagerState *)data;
+    
+    if (st->current_mount[0] == '\0') {
+        usb_mgr_log(st, "No USB mounted");
+        return;
+    }
+    
+    GtkWidget *dialog = gtk_file_chooser_dialog_new("Select file to copy", GTK_WINDOW(st->dialog),
+        GTK_FILE_CHOOSER_ACTION_OPEN, "_Cancel", GTK_RESPONSE_CANCEL, "_Open", GTK_RESPONSE_ACCEPT, NULL);
+    GtkFileFilter *filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(filter, "Text/CSV");
+    gtk_file_filter_add_pattern(filter, "*.txt");
+    gtk_file_filter_add_pattern(filter, "*.csv");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), filter);
+    
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        char *src = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        char *base = g_path_get_basename(src);
+        char dst[512];
+        snprintf(dst, sizeof(dst), "%s/%s", st->current_mount, base);
+        
+        usb_mgr_log(st, "Copying %s to USB...", base);
+        unsigned int copied = 0;
+        if (usb_copy_to_device(src, dst, &copied) == 0) {
+            st->total_writes++;
+            usb_mgr_update_status(st);
+            usb_mgr_refresh_files(st);
+            usb_mgr_log(st, "Copied %u bytes", copied);
+            log_audit(st->app->logged_in_user, "USB Copy To: %s", base);
+        } else {
+            usb_mgr_log(st, "Copy failed");
+        }
+        g_free(base);
+        g_free(src);
+    }
+    gtk_widget_destroy(dialog);
+}
+
+static void on_usb_mgr_copy_from(GtkButton *btn, gpointer data) {
+    (void)btn;
+    UsbManagerState *st = (UsbManagerState *)data;
+    const char *filename = gtk_entry_get_text(GTK_ENTRY(st->file_entry));
+    
+    if (!filename || filename[0] == '\0') {
+        usb_mgr_log(st, "Please select a file");
+        return;
+    }
+    if (st->current_mount[0] == '\0') {
+        usb_mgr_log(st, "No USB mounted");
+        return;
+    }
+    
+    char src[512];
+    snprintf(src, sizeof(src), "%s/%s", st->current_mount, filename);
+    
+    GtkWidget *dialog = gtk_file_chooser_dialog_new("Save to", GTK_WINDOW(st->dialog),
+        GTK_FILE_CHOOSER_ACTION_SAVE, "_Cancel", GTK_RESPONSE_CANCEL, "_Save", GTK_RESPONSE_ACCEPT, NULL);
+    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), filename);
+    gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
+    
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        char *dst = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        usb_mgr_log(st, "Copying %s from USB...", filename);
+        unsigned int copied = 0;
+        if (usb_copy_from_device(src, dst, &copied) == 0) {
+            st->total_reads++;
+            usb_mgr_update_status(st);
+            usb_mgr_log(st, "Copied %u bytes", copied);
+            log_audit(st->app->logged_in_user, "USB Copy From: %s", filename);
+        } else {
+            usb_mgr_log(st, "Copy failed");
+        }
+        g_free(dst);
+    }
+    gtk_widget_destroy(dialog);
+}
+
+static void on_open_usb_manager(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    AppState *app = (AppState *)user_data;
+    
+    UsbManagerState *st = g_new0(UsbManagerState, 1);
+    st->app = app;
+    
+    /* Create dialog */
+    st->dialog = gtk_dialog_new_with_buttons("USB Storage Manager", GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT, "Close", GTK_RESPONSE_CLOSE, NULL);
+    gtk_window_set_default_size(GTK_WINDOW(st->dialog), 800, 550);
+    
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(st->dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 10);
+    gtk_box_set_spacing(GTK_BOX(content), 8);
+    
+    /* Status Frame */
+    GtkWidget *status_frame = gtk_frame_new("USB Status");
+    GtkWidget *status_grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(status_grid), 4);
+    gtk_grid_set_column_spacing(GTK_GRID(status_grid), 15);
+    gtk_container_set_border_width(GTK_CONTAINER(status_grid), 8);
+    
+    gtk_grid_attach(GTK_GRID(status_grid), gtk_label_new("Driver:"), 0, 0, 1, 1);
+    st->status_connected = gtk_label_new("No");
+    gtk_grid_attach(GTK_GRID(status_grid), st->status_connected, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(status_grid), gtk_label_new("Mounted:"), 2, 0, 1, 1);
+    st->status_mounted = gtk_label_new("No");
+    gtk_grid_attach(GTK_GRID(status_grid), st->status_mounted, 3, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(status_grid), gtk_label_new("Reads:"), 4, 0, 1, 1);
+    st->status_reads = gtk_label_new("0");
+    gtk_grid_attach(GTK_GRID(status_grid), st->status_reads, 5, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(status_grid), gtk_label_new("Writes:"), 6, 0, 1, 1);
+    st->status_writes = gtk_label_new("0");
+    gtk_grid_attach(GTK_GRID(status_grid), st->status_writes, 7, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(status_grid), gtk_label_new("Mount Point:"), 0, 1, 1, 1);
+    st->status_mount_point = gtk_label_new("N/A");
+    gtk_label_set_xalign(GTK_LABEL(st->status_mount_point), 0);
+    gtk_grid_attach(GTK_GRID(status_grid), st->status_mount_point, 1, 1, 5, 1);
+    st->status_bar = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(st->status_bar), "<span foreground='#f44336' font_weight='bold'>● USB Not Mounted</span>");
+    gtk_grid_attach(GTK_GRID(status_grid), st->status_bar, 6, 1, 2, 1);
+    gtk_container_add(GTK_CONTAINER(status_frame), status_grid);
+    
+    /* Controls */
+    GtkWidget *ctrl_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *btn_mount = gtk_button_new_with_label("🔌 Mount via Driver");
+    GtkWidget *btn_unmount = gtk_button_new_with_label("⏏ Unmount");
+    GtkWidget *btn_detect = gtk_button_new_with_label("🔍 Detect USB");
+    GtkWidget *btn_refresh = gtk_button_new_with_label("🔄 Refresh");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_mount), "primary-btn");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_unmount), "danger-btn");
+    gtk_box_pack_start(GTK_BOX(ctrl_box), btn_mount, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ctrl_box), btn_unmount, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ctrl_box), btn_detect, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ctrl_box), btn_refresh, FALSE, FALSE, 0);
+    
+    /* Main paned: File list | Content */
+    GtkWidget *paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_widget_set_vexpand(paned, TRUE);
+    
+    /* Left: File list */
+    GtkWidget *files_frame = gtk_frame_new("USB Files");
+    GtkWidget *files_scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_size_request(files_scroll, 220, -1);
+    st->file_store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+    st->file_tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(st->file_store));
+    GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    gtk_tree_view_insert_column_with_attributes(GTK_TREE_VIEW(st->file_tree), -1, "Name", renderer, "text", 0, NULL);
+    gtk_tree_view_insert_column_with_attributes(GTK_TREE_VIEW(st->file_tree), -1, "Type", renderer, "text", 1, NULL);
+    gtk_tree_view_insert_column_with_attributes(GTK_TREE_VIEW(st->file_tree), -1, "Size", renderer, "text", 2, NULL);
+    gtk_container_add(GTK_CONTAINER(files_scroll), st->file_tree);
+    gtk_container_add(GTK_CONTAINER(files_frame), files_scroll);
+    
+    /* Right: Operations + Content + Log */
+    GtkWidget *right_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    
+    /* File ops */
+    GtkWidget *ops_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *fn_lbl = gtk_label_new("Filename:");
+    st->file_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(st->file_entry), "example.txt");
+    GtkWidget *btn_read = gtk_button_new_with_label("📖 Read");
+    GtkWidget *btn_write = gtk_button_new_with_label("💾 Write");
+    GtkWidget *btn_copy_to = gtk_button_new_with_label("📤 Copy To USB");
+    GtkWidget *btn_copy_from = gtk_button_new_with_label("📥 Copy From USB");
+    gtk_box_pack_start(GTK_BOX(ops_box), fn_lbl, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ops_box), st->file_entry, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(ops_box), btn_read, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ops_box), btn_write, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ops_box), btn_copy_to, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ops_box), btn_copy_from, FALSE, FALSE, 0);
+    
+    /* Text content */
+    GtkWidget *text_frame = gtk_frame_new("File Content");
+    GtkWidget *text_scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_vexpand(text_scroll, TRUE);
+    st->text_view = gtk_text_view_new();
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(st->text_view), GTK_WRAP_WORD_CHAR);
+    gtk_container_add(GTK_CONTAINER(text_scroll), st->text_view);
+    gtk_container_add(GTK_CONTAINER(text_frame), text_scroll);
+    
+    /* Log */
+    GtkWidget *log_frame = gtk_frame_new("Log Messages");
+    GtkWidget *log_scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_size_request(log_scroll, -1, 100);
+    st->log_view = gtk_text_view_new();
+    st->log_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(st->log_view));
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(st->log_view), FALSE);
+    gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(st->log_view), FALSE);
+    gtk_container_add(GTK_CONTAINER(log_scroll), st->log_view);
+    gtk_container_add(GTK_CONTAINER(log_frame), log_scroll);
+    
+    gtk_box_pack_start(GTK_BOX(right_box), ops_box, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(right_box), text_frame, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(right_box), log_frame, FALSE, FALSE, 0);
+    
+    gtk_paned_pack1(GTK_PANED(paned), files_frame, FALSE, FALSE);
+    gtk_paned_pack2(GTK_PANED(paned), right_box, TRUE, FALSE);
+    gtk_paned_set_position(GTK_PANED(paned), 230);
+    
+    gtk_box_pack_start(GTK_BOX(content), status_frame, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), ctrl_box, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), paned, TRUE, TRUE, 0);
+    
+    /* Signals */
+    g_signal_connect(btn_mount, "clicked", G_CALLBACK(on_usb_mgr_mount), st);
+    g_signal_connect(btn_unmount, "clicked", G_CALLBACK(on_usb_mgr_unmount), st);
+    g_signal_connect(btn_detect, "clicked", G_CALLBACK(on_usb_mgr_detect), st);
+    g_signal_connect(btn_refresh, "clicked", G_CALLBACK(on_usb_mgr_refresh), st);
+    g_signal_connect(btn_read, "clicked", G_CALLBACK(on_usb_mgr_read), st);
+    g_signal_connect(btn_write, "clicked", G_CALLBACK(on_usb_mgr_write), st);
+    g_signal_connect(btn_copy_to, "clicked", G_CALLBACK(on_usb_mgr_copy_to), st);
+    g_signal_connect(btn_copy_from, "clicked", G_CALLBACK(on_usb_mgr_copy_from), st);
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(st->file_tree));
+    g_signal_connect(sel, "changed", G_CALLBACK(on_usb_mgr_file_selected), st);
+    
+    /* Init */
+    usb_mgr_log(st, "USB Storage Manager opened");
+    if (usb_driver_available())
+        usb_mgr_log(st, "USB driver connected");
+    else
+        usb_mgr_log(st, "WARNING: USB driver not available");
+    usb_mgr_update_status(st);
+    
+    gtk_widget_show_all(content);
+    gtk_dialog_run(GTK_DIALOG(st->dialog));
+    gtk_widget_destroy(st->dialog);
+    g_free(st);
+}
+
 /* ── User Management Dialog ────────────────────────────────────────────── */
 
 typedef struct {
@@ -1286,6 +1832,9 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     /* Hidden by default until login confirms admin role */
     gtk_widget_set_no_show_all(app->btn_manage_users, TRUE);
 
+    GtkWidget *btn_usb_manager = gtk_button_new_with_label("💾 USB Storage Manager");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_usb_manager), "primary-btn");
+
     GtkWidget *btn_change_pw = gtk_button_new_with_label("🔑  Đổi mật khẩu");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_change_pw), "side-action");
     GtkWidget *btn_logout = gtk_button_new_with_label("⏻  Đăng xuất");
@@ -1310,6 +1859,7 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_box_pack_start(GTK_BOX(sidebar), btn_load,        FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), sidebar_spacer,  TRUE,  TRUE,  0);
     gtk_box_pack_start(GTK_BOX(sidebar), sep4,            FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(sidebar), btn_usb_manager, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), app->btn_manage_users, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), btn_change_pw,   FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sidebar), btn_logout,      FALSE, FALSE, 0);
@@ -1445,52 +1995,16 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_box_pack_start(GTK_BOX(form_card), grid,         FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(form_card), form_btn_row, FALSE, FALSE, 0);
 
-    /* ── USB section (expander) ─────────────────────────────────────── */
-    GtkWidget *usb_expander = gtk_expander_new("  USB — Ghi / Đọc / Xuất");
-    GtkWidget *usb_outer    = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    gtk_style_context_add_class(gtk_widget_get_style_context(usb_outer), "form-card");
-
-    GtkWidget *usb_fields = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *usb_mount_lbox = make_labeled_entry("THƯ MỤC MOUNT USB", &app->usb_mount_entry);
-    GtkWidget *usb_file_lbox  = make_labeled_entry("TÊN FILE USB",      &app->usb_file_entry);
-    GtkWidget *btn_browse_usb = gtk_button_new_with_label("Chọn thư mục");
-    GtkWidget *btn_browse_usb_file = gtk_button_new_with_label("Chọn file");
-
-    gtk_entry_set_placeholder_text(GTK_ENTRY(app->usb_mount_entry), "/run/media/user/USB");
-    gtk_entry_set_placeholder_text(GTK_ENTRY(app->usb_file_entry),  "note.txt");
-    gtk_widget_set_hexpand(app->usb_mount_entry, TRUE);
-
-    gtk_box_pack_start(GTK_BOX(usb_fields), usb_mount_lbox,      TRUE,  TRUE,  0);
-    gtk_box_pack_start(GTK_BOX(usb_fields), usb_file_lbox,       FALSE, FALSE, 0);
-    gtk_box_pack_end  (GTK_BOX(usb_fields), btn_browse_usb,      FALSE, FALSE, 0);
-    gtk_box_pack_end  (GTK_BOX(usb_fields), btn_browse_usb_file, FALSE, FALSE, 0);
-
-    GtkWidget *usb_btn_row   = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    app->btn_usb_write = gtk_button_new_with_label("Ghi USB");
-    GtkWidget *btn_usb_read  = gtk_button_new_with_label("Đọc USB");
-    GtkWidget *btn_export    = gtk_button_new_with_label("Xuất Text (.txt)");
-    GtkWidget *btn_export_csv = gtk_button_new_with_label("Xuất Excel (.csv)");
+    /* ── Export buttons row ─────────────────────────────────────────── */
+    GtkWidget *export_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_style_context_add_class(gtk_widget_get_style_context(export_row), "form-card");
+    GtkWidget *btn_export = gtk_button_new_with_label("📄 Xuất Text (.txt)");
+    GtkWidget *btn_export_csv = gtk_button_new_with_label("📊 Xuất Excel (.csv)");
     app->btn_export_txt = btn_export;
     app->btn_export_csv = btn_export_csv;
-
-    gtk_style_context_add_class(gtk_widget_get_style_context(app->btn_usb_write), "secondary-btn");
     gtk_style_context_add_class(gtk_widget_get_style_context(btn_export_csv), "primary-btn");
-
-    gtk_box_pack_start(GTK_BOX(usb_btn_row), app->btn_usb_write, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(usb_btn_row), btn_usb_read,  FALSE, FALSE, 0);
-    gtk_box_pack_end  (GTK_BOX(usb_btn_row), btn_export_csv,FALSE, FALSE, 0);
-    gtk_box_pack_end  (GTK_BOX(usb_btn_row), btn_export,    FALSE, FALSE, 0);
-
-    GtkWidget *usb_scroll = gtk_scrolled_window_new(NULL, NULL);
-    app->usb_text_view = gtk_text_view_new();
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(app->usb_text_view), GTK_WRAP_WORD_CHAR);
-    gtk_widget_set_size_request(usb_scroll, -1, 80);
-    gtk_container_add(GTK_CONTAINER(usb_scroll), app->usb_text_view);
-
-    gtk_box_pack_start(GTK_BOX(usb_outer), usb_fields,            FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(usb_outer), usb_btn_row,           FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(usb_outer), usb_scroll,            FALSE, FALSE, 0);
-    gtk_container_add(GTK_CONTAINER(usb_expander), usb_outer);
+    gtk_box_pack_start(GTK_BOX(export_row), btn_export, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(export_row), btn_export_csv, FALSE, FALSE, 0);
 
     /* ── Status bar ─────────────────────────────────────────────────── */
     app->status_label = gtk_label_new("Sẵn sàng");
@@ -1502,7 +2016,7 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     gtk_box_pack_start(GTK_BOX(content), topbar,        FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(content), main_card,     TRUE,  TRUE,  0);
     gtk_box_pack_start(GTK_BOX(content), form_card,     FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(content), usb_expander,  FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), export_row,    FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(content), app->status_label, FALSE, FALSE, 0);
 
     /* ── Assemble shell ─────────────────────────────────────────────── */
@@ -1528,18 +2042,16 @@ static GtkWidget *build_dashboard_view(AppState *app) {
     g_signal_connect(btn_load,        "clicked", G_CALLBACK(on_load_clicked),   app);
     g_signal_connect(btn_browse_file, "clicked", G_CALLBACK(on_browse_file_clicked), app);
 
-    g_signal_connect(app->btn_usb_write,   "clicked", G_CALLBACK(on_usb_write_clicked),        app);
-    g_signal_connect(btn_usb_read,         "clicked", G_CALLBACK(on_usb_read_clicked),         app);
     g_signal_connect(btn_export,           "clicked", G_CALLBACK(on_export_usb_clicked),       app);
     g_signal_connect(btn_export_csv,       "clicked", G_CALLBACK(on_export_csv_clicked),       app);
-    g_signal_connect(btn_browse_usb,       "clicked", G_CALLBACK(on_browse_usb_mount_clicked), app);
-    g_signal_connect(btn_browse_usb_file,  "clicked", G_CALLBACK(on_browse_usb_file_clicked),  app);
 
+    g_signal_connect(btn_usb_manager, "clicked", G_CALLBACK(on_open_usb_manager), app);
     g_signal_connect(app->btn_manage_users, "clicked", G_CALLBACK(on_manage_users_clicked), app);
     g_signal_connect(btn_change_pw, "clicked", G_CALLBACK(on_change_password_clicked), app);
     g_signal_connect(btn_logout,    "clicked", G_CALLBACK(on_logout_clicked), app);
 
     set_status(app, "Mẹo: chọn một dòng trong bảng để tự động điền vào form");
+    
     return shell;
 }
 

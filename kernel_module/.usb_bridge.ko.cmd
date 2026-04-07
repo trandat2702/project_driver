@@ -1,0 +1,1 @@
+savedcmd_/home/dat/project_driver/kernel_module/usb_bridge.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T scripts/module.lds -o /home/dat/project_driver/kernel_module/usb_bridge.ko /home/dat/project_driver/kernel_module/usb_bridge.o /home/dat/project_driver/kernel_module/usb_bridge.mod.o /home/dat/project_driver/kernel_module/.module-common.o

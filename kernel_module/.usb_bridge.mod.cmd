@@ -1,0 +1,1 @@
+savedcmd_/home/dat/project_driver/kernel_module/usb_bridge.mod := printf '%s\n'   usb_bridge.o | awk '!x[$$0]++ { print("/home/dat/project_driver/kernel_module/"$$0) }' > /home/dat/project_driver/kernel_module/usb_bridge.mod

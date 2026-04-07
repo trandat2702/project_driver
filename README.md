@@ -1,132 +1,160 @@
-﻿# Student Management System với Linux Character Driver và GTK3
+# Student Management System với Linux Character Drivers và GTK3
 
-Đây là dự án quản lý sinh viên viết bằng C, kết hợp giữa:
+Đây là dự án quản lý sinh viên viết bằng C trên Linux, gồm 2 phần chính chạy song song:
 
-- một Linux character device driver để chuẩn hóa chuỗi trong kernel space;
-- một ứng dụng GTK3 chạy ở user space để đăng nhập, quản lý sinh viên, import/export dữ liệu và thao tác file text trên USB;
-- một bộ test tách riêng cho phần logic userspace và cho luồng I/O với driver.
+- `kernel_module/`: các character driver `string_norm` và `usb_bridge`
+- `userspace_app/`: ứng dụng desktop GTK3 để đăng nhập, quản lý sinh viên, làm việc với file dữ liệu và thao tác USB
 
-README này được viết lại theo đúng hiện trạng mã nguồn trong repository tại thời điểm hiện tại, không giả định thêm những tính năng chưa có trong code.
+Dự án không chỉ minh họa giao tiếp user space <-> kernel space, mà còn ghép nhiều lớp thực tế vào cùng một chương trình:
 
-## 1. Mục tiêu dự án
+- chuẩn hóa tên sinh viên qua driver
+- xác thực tài khoản bằng SHA-256
+- phân quyền `admin` và `viewer`
+- CRUD sinh viên trong RAM
+- lưu, nạp, import và export dữ liệu
+- audit log cho các thao tác quan trọng
+- quản lý file text/CSV trên USB qua driver hoặc fallback ở user space
 
-Dự án minh họa cách kết hợp nhiều lớp trong một ứng dụng hệ thống hoàn chỉnh:
+README này được viết lại theo đúng mã nguồn hiện có trong repository, không mô tả các tính năng chưa tồn tại và cũng không bỏ qua các giới hạn thực tế của code.
 
-- `kernel_module/`: xây dựng driver ký tự `/dev/string_norm`;
-- `userspace_app/`: xây dựng ứng dụng desktop GTK3 dùng driver đó để chuẩn hóa tên sinh viên;
-- `tests/`: kiểm thử các hàm xử lý nghiệp vụ và kiểm tra giao tiếp thật với device node.
-
-Ý tưởng trung tâm của project là:
-
-1. người dùng nhập dữ liệu sinh viên ở GUI;
-2. tên sinh viên được đưa qua driver `/dev/string_norm` để chuẩn hóa;
-3. dữ liệu sau khi hợp lệ được lưu trong RAM, có thể ghi ra file text, xuất CSV hoặc thao tác với file text trên USB;
-4. các hành động quan trọng được ghi vào `audit.log`.
-
-## 2. Kiến trúc tổng thể
-
-### 2.1. Sơ đồ luồng
+## 1. Tổng quan kiến trúc
 
 ```text
-GTK3 GUI
-   |
-   |-- auth.c       -> xác thực tài khoản, phân quyền admin/viewer
-   |-- student.c    -> CRUD, validate, save/load, export CSV
-   |                    |
-   |                    -> /dev/string_norm (kernel module)
-   |
-   |-- usb_file.c   -> đọc/ghi file text tại thư mục mount USB
-   |
-   |-- audit.c      -> ghi nhật ký thao tác
+                 +-----------------------------+
+                 |      GTK3 GUI App           |
+                 |  userspace_app/gui_app.c    |
+                 +-------------+---------------+
+                               |
+        +----------------------+----------------------+
+        |                      |                      |
+        v                      v                      v
+ +-------------+      +----------------+      +------------------+
+ |   auth.c    |      |   student.c    |      |    usb_file.c    |
+ | SHA-256     |      | CRUD + import  |      | mount/read/write |
+ | role-based  |      | export + sort  |      | copy USB files   |
+ +------+------+      +-------+--------+      +---------+--------+
+        |                     |                         |
+        |                     v                         v
+        |             /dev/string_norm          /dev/usb_bridge
+        |                     |                         |
+        v                     v                         v
+ +-------------+     +----------------+      +--------------------+
+ |  config.txt |     | string_norm.ko |      |   usb_bridge.ko    |
+ +-------------+     +----------------+      +--------------------+
+
+                 +-----------------------------+
+                 |          audit.c            |
+                 | ghi audit.log theo phiên    |
+                 +-----------------------------+
 ```
 
-### 2.2. Ba khối chính
+## 2. Thành phần của dự án
 
-#### `kernel_module`
+### 2.1. `kernel_module/`
 
-Driver ký tự `string_norm` nhận chuỗi từ user space qua `write()`, chuẩn hóa chuỗi trong kernel rồi trả kết quả lại bằng `read()`.
+Thư mục này chứa 2 kernel module:
 
-#### `userspace_app`
+- `string_norm.c`: driver chuẩn hóa chuỗi tên
+- `usb_bridge.c`: driver nhận `ioctl()` để mount/unmount, đọc/ghi/copy file text và CSV
 
-Ứng dụng chính là `student_manager_gui`, được build từ `gui_app.c` cùng các module phụ:
+Ngoài source còn có sẵn nhiều artifact build như `.ko`, `.o`, `.mod.c`, `modules.order`, `Module.symvers`. Đây là trạng thái hiện tại của repo.
 
-- `auth.c`: xác thực tài khoản, băm SHA-256, phân quyền, đổi mật khẩu, quản lý user;
-- `student.c`: thêm/sửa/xóa/tìm/sắp xếp sinh viên, load/save file, export CSV;
-- `usb_file.c`: đọc/ghi file text trong một thư mục mount do người dùng cung cấp;
-- `audit.c`: ghi audit log.
+### 2.2. `userspace_app/`
 
-#### `tests`
+Ứng dụng chính được build thành binary `student_manager_gui`. Các module chính:
+
+- `gui_app.c`: giao diện, callback GTK, orchestration toàn bộ luồng
+- `student.c`: nghiệp vụ sinh viên, normalize, CRUD, load/save, export CSV
+- `auth.c`: đăng nhập, đọc role, đổi mật khẩu, thêm/xóa user, reset mật khẩu
+- `usb_file.c`: lớp thao tác file USB ở user space
+- `usb_driver_client.c`: wrapper gọi `ioctl()` tới `/dev/usb_bridge`
+- `audit.c`: ghi audit log
+- `style.css`: theme GTK
+- `config.txt`: dữ liệu tài khoản
+- `students.txt`: dữ liệu sinh viên mặc định
+
+### 2.3. `tests/`
 
 Gồm 2 nhóm:
 
-- `userspace_tests/`: unit test cho logic userspace;
-- `integration_tests/`: test giao tiếp thật với `/dev/string_norm`.
+- `userspace_tests/`: test logic userspace
+- `integration_tests/`: test giao tiếp thật với driver
 
-## 3. Cấu trúc thư mục
+## 3. Cấu trúc thư mục chính
 
 ```text
 .
-├─ kernel_module/
-│  ├─ Makefile
-│  ├─ string_norm.c
-│  ├─ string_norm.h
-│  ├─ string_norm.ko
-│  └─ các artifact build kernel khác
-├─ userspace_app/
-│  ├─ Makefile
-│  ├─ gui_app.c
-│  ├─ student.c
-│  ├─ student.h
-│  ├─ auth.c
-│  ├─ auth.h
-│  ├─ usb_file.c
-│  ├─ usb_file.h
-│  ├─ audit.c
-│  ├─ audit.h
-│  ├─ style.css
-│  ├─ config.txt
-│  ├─ students.txt
-│  ├─ audit.log
-│  └─ student_manager_gui
-└─ tests/
-   ├─ Makefile
-   ├─ userspace_tests/
-   │  ├─ test_auth.c
-   │  ├─ test_student.c
-   │  └─ test_normalize_mock.c
-   └─ integration_tests/
-      ├─ test_driver_io.c
-      └─ run_all_tests.sh
+├── kernel_module/
+│   ├── Makefile
+│   ├── string_norm.c
+│   ├── string_norm.h
+│   ├── usb_bridge.c
+│   └── usb_bridge_ioctl.h
+├── userspace_app/
+│   ├── Makefile
+│   ├── gui_app.c
+│   ├── student.c
+│   ├── student.h
+│   ├── auth.c
+│   ├── auth.h
+│   ├── usb_file.c
+│   ├── usb_file.h
+│   ├── usb_driver_client.c
+│   ├── usb_driver_client.h
+│   ├── audit.c
+│   ├── audit.h
+│   ├── style.css
+│   ├── config.txt
+│   └── students.txt
+└── tests/
+    ├── Makefile
+    ├── userspace_tests/
+    │   ├── test_normalize_mock.c
+    │   ├── test_auth.c
+    │   └── test_student.c
+    └── integration_tests/
+        ├── test_driver_io.c
+        ├── test_usb_bridge_io.c
+        └── run_all_tests.sh
 ```
 
-Lưu ý:
-
-- repository hiện đang chứa sẵn cả source lẫn một số file build (`.ko`, binary test, binary GUI, object/module files);
-- đó là trạng thái hiện tại của repo, không phải toàn bộ các file này đều là source gốc.
-
-## 4. Kernel module: `string_norm`
+## 4. Kernel driver `string_norm`
 
 ### 4.1. Vai trò
 
-Driver chịu trách nhiệm chuẩn hóa chuỗi nhập từ user space. Chuỗi sau xử lý được dùng để tạo `normalized_name` cho sinh viên.
-
-### 4.2. Device node
-
-Sau khi nạp module đúng cách, thiết bị được truy cập qua:
+`string_norm` là character device dùng để chuẩn hóa chuỗi tên từ user space. Device node mục tiêu là:
 
 ```bash
 /dev/string_norm
 ```
 
-### 4.3. Hành vi chuẩn hóa
+### 4.2. Cách hoạt động
 
-Theo code hiện tại trong `kernel_module/string_norm.c`, driver:
+Luồng gọi rất đơn giản:
 
-- bỏ khoảng trắng đầu chuỗi;
-- gộp nhiều khoảng trắng liên tiếp thành một khoảng trắng;
-- viết hoa ký tự đầu mỗi từ;
-- đưa các ký tự còn lại về lowercase;
-- bỏ khoảng trắng cuối chuỗi nếu có.
+1. user space mở `/dev/string_norm`
+2. ghi chuỗi gốc bằng `write()`
+3. driver chuẩn hóa chuỗi trong kernel
+4. đọc lại kết quả bằng `read()`
+
+Driver dùng:
+
+- `alloc_chrdev_region()`
+- `cdev_add()`
+- `class_create()`
+- `device_create()`
+- `copy_from_user()` và `copy_to_user()`
+- `mutex` để bảo vệ buffer dùng chung
+
+### 4.3. Quy tắc normalize
+
+Theo implementation hiện tại trong `kernel_module/string_norm.c`, driver:
+
+- bỏ khoảng trắng đầu chuỗi
+- gộp nhiều khoảng trắng liên tiếp thành một dấu cách
+- viết hoa ký tự đầu mỗi từ
+- đưa các ký tự còn lại về lowercase
+- bỏ khoảng trắng cuối chuỗi nếu có
 
 Ví dụ:
 
@@ -136,194 +164,189 @@ Ví dụ:
 "   "                  -> ""
 ```
 
-### 4.4. Cơ chế hoạt động
+### 4.4. Giới hạn hiện tại
 
-Driver dùng:
+- buffer tĩnh dùng chung:
+  - `input_buf[1024]`
+  - `processed_buf[1024]`
+- dữ liệu hữu ích mỗi lượt chỉ tối đa khoảng `1023` byte
+- chỉ xử lý kiểu ký tự `ctype.h`, không có logic Unicode hay tiếng Việt có dấu
+- state của driver là dùng chung toàn cục, không tách riêng theo session mở file
+- header `string_norm.h` khai báo `normalize_string(...)`, nhưng hàm thực thi trong `.c` là `normalize_string_kernel(...)` dạng `static`
 
-- `alloc_chrdev_region()` để cấp major/minor động;
-- `cdev_add()` để đăng ký character device;
-- `class_create()` và `device_create()` để tạo thiết bị trong `/dev`;
-- `copy_from_user()` và `copy_to_user()` để trao đổi dữ liệu;
-- `mutex` để bảo vệ vùng đệm dùng chung.
+## 5. Kernel driver `usb_bridge`
 
-### 4.5. Bộ đệm nội bộ
+### 5.1. Vai trò
 
-Trong driver có 2 buffer tĩnh:
+`usb_bridge` là character device thứ hai của dự án, cung cấp API `ioctl()` để:
 
-- `input_buf[1024]`
-- `processed_buf[1024]`
+- mount USB
+- unmount USB
+- đọc file `.txt` hoặc `.csv`
+- ghi file `.txt` hoặc `.csv`
+- copy file host <-> USB
+- kiểm tra mount point có phải do driver quản lý hay không
 
-Điều này có nghĩa:
+Device node mục tiêu:
 
-- mỗi lần `write()` chỉ lưu được tối đa `1023` byte dữ liệu hữu ích;
-- kết quả `read()` cũng bị giới hạn bởi kích thước buffer này.
+```bash
+/dev/usb_bridge
+```
 
-### 4.6. Giới hạn hiện tại của driver
+### 5.2. Các `ioctl` chính
 
-Theo code hiện tại:
+Header chung cho kernel và user space là `kernel_module/usb_bridge_ioctl.h`.
 
-- driver chỉ xử lý theo kiểu ký tự C cơ bản với `ctype.h`;
-- không có logic Unicode/Vietnamese-aware;
-- không hỗ trợ nhiều request song song tách biệt theo từng session, vì dùng buffer dùng chung toàn cục;
-- `string_norm.h` khai báo `normalize_string(...)`, nhưng implementation thực tế trong `.c` là `normalize_string_kernel(...)` dạng `static`; header này hiện gần như không được dùng đúng theo tên hàm công khai.
+Các operation hiện có:
 
-## 5. Userspace application
+- `USB_OP_MOUNT`
+- `USB_OP_UNMOUNT`
+- `USB_OP_READ_TEXT`
+- `USB_OP_WRITE_TEXT`
+- `USB_OP_COPY_HOST_TO_USB`
+- `USB_OP_COPY_USB_TO_HOST`
+- `USB_OP_CHECK_MOUNT_OWNERSHIP`
 
-### 5.1. Mục tiêu
+### 5.3. Hành vi bảo vệ cơ bản
 
-Ứng dụng GTK3 cung cấp giao diện quản lý sinh viên có đăng nhập và phân quyền. GUI không chỉ hiển thị dữ liệu mà còn đóng vai trò orchestration giữa các module nghiệp vụ.
+Driver áp một số kiểm tra đầu vào trước khi đọc/ghi:
 
-### 5.2. Thành phần chính
+- path phải là đường dẫn tuyệt đối
+- từ chối path chứa `..`
+- giới hạn độ dài path
+- chỉ chấp nhận extension `.txt` và `.csv`
 
-#### `gui_app.c`
+Ngoài ra driver có bảng `tracked_mounts` để chỉ cho phép unmount các mount point do chính nó đã mount trước đó.
 
-Đây là file điều phối chính. Nó quản lý:
+### 5.4. Cách mount/unmount
 
-- đăng nhập;
-- danh sách sinh viên đang nằm trong RAM;
-- bảng hiển thị dữ liệu;
-- form thêm/sửa;
-- file import/export;
-- thao tác USB;
-- quản lý user;
-- trạng thái theo role.
+Driver không tự mount trực tiếp bằng VFS nội bộ mà gọi helper ở user mode:
 
-#### `student.c`
+- mount qua `/bin/mount`
+- unmount qua `/bin/umount`
 
-Chứa phần nghiệp vụ lõi cho sinh viên:
+Sau khi mount thành công, driver ghi nhận mount point vào danh sách theo dõi. Nếu việc track mount thất bại thì driver cố rollback bằng cách unmount lại ngay.
 
-- validate tên;
-- chuẩn hóa mã sinh viên và lớp;
-- gọi driver để chuẩn hóa tên;
-- thêm, xóa, sửa, tìm kiếm, sắp xếp;
-- save/load file;
-- export CSV.
+### 5.5. Đọc/ghi/copy file
 
-#### `auth.c`
+Phần file I/O trong driver dùng:
 
-Chứa logic xác thực:
+- `filp_open()`
+- `kernel_read()`
+- `kernel_write()`
 
-- băm SHA-256 bằng OpenSSL;
-- đăng nhập theo `config.txt`;
-- đọc role;
-- đổi mật khẩu;
-- reset mật khẩu bởi admin;
-- thêm/xóa user;
-- liệt kê danh sách user.
+Copy file dùng buffer từng khối `4096` byte.
 
-#### `usb_file.c`
+### 5.6. Giới hạn quan trọng
 
-Không giao tiếp với USB driver riêng. Module này chỉ thao tác file text trong một thư mục mount do người dùng nhập.
+- nội dung tối đa cho read/write qua struct hiện là `65536` byte
+- extension bị giới hạn chặt ở `.txt` và `.csv`
+- mount tracking tối đa `16` mount point
+- mọi operation `ioctl()` đi qua một `mutex` chung, không phải multi-session parallel design
 
-#### `audit.c`
+## 6. Ứng dụng userspace GTK3
 
-Ghi log thao tác ra file `audit.log`.
+### 6.1. Mục tiêu
 
-## 6. Tính năng hiện có
+Ứng dụng desktop đóng vai trò giao diện chính cho toàn hệ thống. Khi chạy, GUI:
 
-### 6.1. Xác thực và phân quyền
+- mở màn hình đăng nhập
+- nạp `students.txt` lúc khởi động
+- hiển thị danh sách sinh viên trong `GtkTreeView`
+- lưu lại `students.txt` khi thoát chương trình
 
-Hệ thống hỗ trợ 2 role:
+### 6.2. Trạng thái trung tâm
 
-- `admin`
-- `viewer`
+`gui_app.c` dùng một `AppState` để giữ:
+
+- mảng sinh viên đang thao tác trong RAM
+- mảng kết quả tìm kiếm
+- username và role đang đăng nhập
+- các widget GTK quan trọng
+- bộ đếm login sai và thời gian lockout
+
+### 6.3. Giao diện chính
+
+Dashboard hiện có các vùng sau:
+
+- sidebar điều hướng
+- top bar hiển thị tiêu đề và thông tin user
+- bảng danh sách sinh viên
+- ô tìm kiếm inline
+- form thêm/sửa/xóa
+- cụm export
+- status bar
+- nút mở `USB Storage Manager`
+- nút `Quản lý tài khoản`
+- nút `Đổi mật khẩu`
+- nút `Đăng xuất`
+
+## 7. Đăng nhập, xác thực và phân quyền
+
+### 7.1. File cấu hình tài khoản
+
+Ứng dụng đọc tài khoản từ:
+
+```text
+userspace_app/config.txt
+```
+
+Schema hiện tại:
+
+```text
+username:sha256_hash:role
+```
+
+Code vẫn tương thích ngược với format cũ 2 cột:
+
+```text
+username:sha256_hash
+```
+
+Nếu thiếu cột role thì mặc định role được coi là `admin`.
+
+### 7.2. Tài khoản mẫu đang có trong repo
+
+Theo đúng file `userspace_app/config.txt` hiện tại:
+
+- `admin` / mật khẩu `admin` / role `admin`
+- `student` / mật khẩu `123` / role `viewer`
+
+### 7.3. Băm mật khẩu
+
+Module `auth.c` dùng OpenSSL `SHA256()` để băm mật khẩu và lưu dưới dạng chuỗi hex dài 64 ký tự.
+
+Hệ thống không lưu plaintext password trong `config.txt`.
+
+### 7.4. Lockout đăng nhập
+
+Ở GUI:
+
+- nếu nhập sai 3 lần liên tiếp, form login bị khóa `30` giây
+- trong thời gian khóa:
+  - ô username bị disable
+  - ô password bị disable
+  - nút login bị disable
+- có đếm ngược theo giây
+- hết thời gian khóa thì bộ đếm reset
+
+### 7.5. Phân quyền `admin` và `viewer`
 
 Sau khi đăng nhập thành công:
 
-- `admin` nhìn thấy và dùng được các chức năng thay đổi dữ liệu;
-- `viewer` vẫn xem danh sách, tìm kiếm, tải dữ liệu, export dữ liệu, nhưng các thao tác quản trị bị ẩn hoặc vô hiệu hóa theo code GUI hiện tại.
+- `admin` dùng đầy đủ chức năng
+- `viewer` vẫn được xem dữ liệu nhưng các widget sửa đổi dữ liệu chính bị ẩn
 
-### 6.2. Đăng nhập với lockout
+Theo code hiện tại:
 
-Tại GUI:
+- `admin` có thêm/sửa/xóa sinh viên
+- `admin` có lưu dữ liệu xuống file
+- `admin` thấy nút quản lý tài khoản
+- `viewer` vẫn xem danh sách, tìm kiếm, tải file, export CSV/TXT, mở USB manager, đổi mật khẩu và đăng xuất
 
-- nếu nhập sai 3 lần liên tiếp, form đăng nhập bị khóa 30 giây;
-- trong thời gian khóa, nút đăng nhập và ô nhập bị disable;
-- có hiển thị đếm ngược;
-- khi hết thời gian khóa, người dùng có thể thử lại.
+## 8. Nghiệp vụ sinh viên
 
-### 6.3. Quản lý sinh viên
-
-Các thao tác hiện có:
-
-- thêm sinh viên;
-- sửa sinh viên;
-- xóa sinh viên;
-- chọn dòng trong bảng để tự đổ dữ liệu vào form;
-- tìm kiếm theo mã sinh viên, tên gốc hoặc tên chuẩn hóa;
-- sắp xếp theo tên A-Z;
-- sắp xếp GPA tăng dần;
-- sắp xếp GPA giảm dần.
-
-### 6.4. Lưu và tải dữ liệu
-
-GUI cho phép:
-
-- lưu danh sách hiện tại ra file text;
-- tải danh sách từ file text hoặc file CSV đúng schema mà ứng dụng chấp nhận;
-- nếu đang có dữ liệu trên RAM, thao tác tải sẽ hỏi xác nhận vì nó thay thế toàn bộ danh sách hiện có.
-
-### 6.5. Export
-
-Ứng dụng hỗ trợ:
-
-- xuất text bằng `save_to_file(...)`;
-- xuất CSV bằng `export_to_csv(...)`.
-
-### 6.6. USB text I/O
-
-GUI có vùng riêng để:
-
-- nhập đường dẫn mount USB;
-- nhập tên file;
-- ghi nội dung từ `GtkTextView` ra file;
-- đọc file text vào lại vùng text đó.
-
-Đây là file I/O ở user space, không phải USB kernel driver.
-
-### 6.7. Quản lý user
-
-Trong dialog quản lý tài khoản, admin có thể:
-
-- xem danh sách user và role;
-- thêm tài khoản mới;
-- xóa tài khoản đang chọn;
-- reset mật khẩu cho tài khoản đang chọn.
-
-Theo GUI hiện tại:
-
-- admin không được xóa chính tài khoản đang đăng nhập;
-- role được chọn từ combo box giữa `viewer` và `admin`.
-
-### 6.8. Đổi mật khẩu
-
-Người dùng đang đăng nhập có thể:
-
-- nhập mật khẩu cũ;
-- nhập mật khẩu mới;
-- xác nhận mật khẩu mới.
-
-Luồng đổi mật khẩu có kiểm tra:
-
-- không được để trống;
-- mật khẩu mới phải khớp xác nhận;
-- mật khẩu mới phải khác mật khẩu cũ;
-- mật khẩu cũ phải đúng.
-
-### 6.9. Audit log
-
-Các hành động quan trọng đều được ghi lại, ví dụ:
-
-- đăng nhập thất bại;
-- thêm/sửa/xóa sinh viên;
-- lưu/tải file;
-- đọc/ghi USB;
-- export;
-- tạo/xóa user;
-- reset mật khẩu;
-- đổi mật khẩu.
-
-## 7. Mô hình dữ liệu sinh viên
+### 8.1. Cấu trúc dữ liệu
 
 Struct `Student` trong `userspace_app/student.h`:
 
@@ -338,64 +361,60 @@ typedef struct {
 } Student;
 ```
 
-Ý nghĩa các trường:
+Ý nghĩa:
 
-- `student_code`: mã sinh viên đã được chuẩn hóa về uppercase, bỏ khoảng trắng;
-- `raw_name`: tên gốc người dùng nhập;
-- `normalized_name`: tên sau khi đi qua driver rồi được lọc lại ở user space;
-- `student_class`: lớp, được chuẩn hóa về uppercase và bỏ khoảng trắng;
-- `dob`: ngày sinh định dạng `dd/mm/yyyy`;
-- `gpa`: điểm hệ 4.
+- `student_code`: mã sinh viên sau chuẩn hóa
+- `raw_name`: tên gốc người dùng nhập
+- `normalized_name`: tên đã chuẩn hóa
+- `student_class`: lớp sau chuẩn hóa
+- `dob`: ngày sinh
+- `gpa`: điểm hệ 4
 
-### 7.1. Giới hạn kích thước
+### 8.2. Giới hạn dữ liệu
 
-Theo header hiện tại:
+- tối đa `100` sinh viên trong RAM
+- `MAX_NAME_LEN = 256`
+- `MAX_CODE_LEN = 20`
+- `MAX_CLASS_LEN = 20`
+- `MAX_DOB_LEN = 15`
 
-- tối đa `100` sinh viên trong RAM;
-- mã sinh viên tối đa `20` ký tự;
-- tên tối đa `256` ký tự;
-- lớp tối đa `20` ký tự;
-- ngày sinh tối đa `15` ký tự buffer, nhưng validate thực tế yêu cầu đúng chuỗi dài 10 ký tự dạng `dd/mm/yyyy`.
+### 8.3. Chuẩn hóa dữ liệu
 
-## 8. Quy tắc validate và chuẩn hóa dữ liệu
+#### Mã sinh viên
 
-### 8.1. Mã sinh viên
-
-Trong GUI và lúc load file:
-
-- chỉ chấp nhận chữ và số;
-- khi lưu vào struct sẽ được chuẩn hóa về uppercase;
-- khoảng trắng bị loại bỏ.
+- chỉ cho phép chữ và số
+- bị loại bỏ khoảng trắng
+- được đưa về uppercase
 
 Ví dụ:
 
 ```text
-" ct07 0302 " -> "CT070302"
+" ct07 0310 " -> "CT070310"
 ```
 
-### 8.2. Họ tên
+#### Họ tên
 
-Theo logic hiện tại:
+`student.c` làm theo 2 lớp:
 
-- `is_valid_name()` chỉ cho phép chữ cái và khoảng trắng;
-- nếu tên chứa số hoặc ký tự đặc biệt thì bị từ chối;
-- sau đó tên được gửi xuống driver để chuẩn hóa;
-- kết quả từ driver lại được lọc lần nữa ở user space để chỉ giữ chữ cái và khoảng trắng.
+1. thử gọi `normalize_via_driver()` qua `/dev/string_norm`
+2. nếu driver không sẵn sàng thì fallback sang chuẩn hóa ở user space bằng `sanitize_name_alpha_space()`
 
 Điểm quan trọng:
 
-- hàm `normalize_name_best_effort(...)` trong code hiện tại thực tế không fallback sang user space nếu driver lỗi;
-- nếu không mở được `/dev/string_norm`, hàm trả lỗi luôn;
-- vì vậy thao tác thêm/sửa/load dữ liệu phụ thuộc vào việc driver sẵn sàng.
+- fallback thật sự có tồn tại trong code hiện tại
+- sau normalize, tên bị lọc chỉ còn chữ cái và khoảng trắng
+- chữ số và ký tự đặc biệt bị loại bỏ ở bước sanitize
 
-Tên gọi `best_effort` trong code không phản ánh đúng hành vi thực tế hiện tại.
+Ví dụ:
 
-### 8.3. Lớp
+```text
+"  @#$NGUYEN123   VAN456   AN!@#  " -> "Nguyen Van An"
+```
 
-Lớp:
+#### Lớp
 
-- được chấp nhận nếu chỉ gồm chữ, số, khoảng trắng;
-- khi ghi vào struct sẽ bị bỏ khoảng trắng và đổi sang uppercase.
+- cho phép chữ, số và khoảng trắng ở đầu vào
+- khi lưu vào struct sẽ bỏ khoảng trắng và uppercase
 
 Ví dụ:
 
@@ -403,52 +422,84 @@ Ví dụ:
 " ct 07 c " -> "CT07C"
 ```
 
-### 8.4. Ngày sinh
+#### Ngày sinh
 
-Ứng dụng chỉ kiểm tra ở mức cơ bản:
+Code chỉ kiểm tra mức cơ bản:
 
-- đúng độ dài `10`;
-- có dấu `/` tại vị trí `2` và `5`;
-- parse được dạng `dd/mm/yyyy`;
-- ngày trong khoảng `1..31`;
-- tháng trong khoảng `1..12`;
-- năm trong khoảng `1900..2100`.
+- độ dài phải là `10`
+- bắt buộc có dấu `/` tại vị trí `2` và `5`
+- parse được dạng `dd/mm/yyyy`
+- ngày `1..31`
+- tháng `1..12`
+- năm `1900..2100`
 
-Chưa có kiểm tra lịch thực tế sâu như:
+Chưa có kiểm tra lịch thực như:
 
-- ngày 31 của tháng 2;
-- năm nhuận.
+- `31/02`
+- năm nhuận
 
-### 8.5. GPA
+#### GPA
 
-GPA phải:
+- parse bằng `strtof`
+- không được có ký tự rác phía sau
+- phải nằm trong khoảng `0.0..4.0`
 
-- parse được bằng `strtof`;
-- không có rác phía sau;
-- nằm trong khoảng `0.0` đến `4.0`.
+### 8.4. CRUD
 
-## 9. File dữ liệu và định dạng
+`student.c` hiện hỗ trợ:
 
-### 9.1. `students.txt`
+- `add_student()`
+- `delete_student()`
+- `edit_student()` cho bản CLI
+- `search_student()`
+- `sort_by_name()`
+- `sort_by_gpa()`
 
-File mặc định của app là:
+GUI dùng `add_student()` và `delete_student()` trực tiếp, còn logic sửa được xử lý trong `gui_app.c`.
+
+### 8.5. Tìm kiếm
+
+Hàm `search_student()` tìm theo substring trên 3 trường:
+
+- `normalized_name`
+- `raw_name`
+- `student_code`
+
+Lưu ý:
+
+- tìm kiếm hiện là `strstr()`
+- có phân biệt hoa thường
+- không phải exact match
+
+### 8.6. Sắp xếp
+
+GUI hiện hỗ trợ:
+
+- tên A-Z
+- GPA tăng dần
+- GPA giảm dần
+
+## 9. File dữ liệu sinh viên
+
+### 9.1. File mặc định
+
+GUI dùng file mặc định:
 
 ```text
 userspace_app/students.txt
 ```
 
-Ví dụ hiện có trong repo:
+Nội dung mẫu hiện có trong repo:
 
 ```text
 # code|name|class|dob|gpa
-CT070302|Bui Duc Anh|CT07C|27/02/2004|3.40
-CT070308|Tran Hai Dang|CT07C|27/12/2003|3.50
-CT070310|Tran Quoc Dat|CT07C|27/02/2004|3.20
+CT07|Tran Quoc D A Yamate|CT07C|27/02/2004|4.00
+CT070310|Tran Quoc Toan|CT07C|27/02/2004|4.00
 ```
 
 ### 9.2. Định dạng save nội bộ
 
-`save_to_file(...)` ghi theo schema:
+`save_to_file()` ghi theo format:
 
 ```text
 # code|name|class|dob|gpa
@@ -457,83 +508,132 @@ MASV|Ten Da Chuan Hoa|LOP|dd/mm/yyyy|x.xx
 
 Đặc điểm:
 
-- dùng dấu `|`;
-- có dòng header comment đầu file;
-- lưu `normalized_name`, không lưu `raw_name`.
+- dùng delimiter `|`
+- có dòng comment/header
+- lưu `normalized_name`, không lưu `raw_name`
 
-### 9.3. Load file
+### 9.3. Nạp dữ liệu
 
-`load_from_file(...)` hiện chấp nhận:
+`load_from_file()` chấp nhận:
 
-- file phân tách bằng `|`;
-- hoặc file phân tách bằng `,`.
+- file nội bộ dùng `|`
+- file CSV dùng `,`
 
-Nó cũng:
+Khi đọc file, code sẽ:
 
-- bỏ qua dòng trống;
-- bỏ qua dòng comment bắt đầu bằng `#`;
-- bỏ BOM UTF-8 nếu có;
-- trim khoảng trắng đầu/cuối từng field.
+- bỏ dòng trống
+- bỏ dòng comment bắt đầu bằng `#`
+- strip UTF-8 BOM nếu có
+- trim khoảng trắng đầu/cuối từng field
+- bỏ qua header CSV nếu cột cuối là `GPA`
 
-### 9.4. Chế độ strict khi import
+### 9.4. Chế độ import
 
-`load_from_file(...)` đang chạy theo kiểu strict:
+Import hiện là strict:
 
-- chỉ cần một dòng sai format hoặc sai rule nghiệp vụ là từ chối toàn bộ file;
-- mã sinh viên trùng trong file cũng làm import thất bại;
-- nếu driver không sẵn sàng để chuẩn hóa tên, import cũng thất bại.
+- chỉ cần một dòng sai là từ chối toàn bộ file
+- dữ liệu không được nạp từng phần
+- mã sinh viên trùng trong file cũng bị từ chối
+- mọi field phải qua validate nghiệp vụ
 
-Khi lỗi định dạng/nghiệp vụ, hàm trả `-2`.
+Giá trị trả về:
+
+- `0`: thành công
+- `-1`: không mở được file
+- `-2`: file sai format hoặc vi phạm rule nghiệp vụ
 
 ### 9.5. Export CSV
 
-`export_to_csv(...)`:
+`export_to_csv()`:
 
-- ghi BOM UTF-8 ở đầu file;
-- dùng header tiếng Việt;
-- ghi các cột: mã SV, họ và tên, lớp, ngày sinh, GPA;
-- dùng `raw_name` khi export CSV.
+- ghi BOM UTF-8
+- dùng header tiếng Việt
+- ghi các cột: `Mã SV,Họ và Tên,Lớp,Ngày Sinh,GPA`
+- dùng `raw_name` khi export
 
-Điểm này khác với `save_to_file(...)`, nơi tên được lưu dưới dạng `normalized_name`.
+Điểm này khác với `save_to_file()`, nơi tên được lưu là `normalized_name`.
 
-## 10. Xác thực và quản lý tài khoản
+## 10. USB manager và file I/O USB
 
-### 10.1. File cấu hình tài khoản
+### 10.1. Lớp user space
 
-File tài khoản mặc định:
+`userspace_app/usb_file.c` là lớp trung gian để thao tác file trên USB. Nó không hoàn toàn phụ thuộc cứng vào driver trong mọi trường hợp.
 
-```text
-userspace_app/config.txt
-```
+### 10.2. Hành vi fallback
 
-Schema:
+Theo code hiện tại:
 
-```text
-username:sha256_hash:role
-```
+- `usb_write_text_file()`:
+  - ưu tiên driver
+  - nếu driver ghi lỗi thì fallback sang `libc`
+- `usb_read_text_file()`:
+  - ưu tiên driver
+  - nếu driver đọc lỗi thì fallback sang `libc`
+- `usb_mount()` và `usb_mount_detect()`:
+  - ưu tiên driver
+  - nếu driver không dùng được thì fallback sang `udisksctl`
+- `usb_unmount()`:
+  - ưu tiên driver
+  - rồi thử `udisksctl`
+  - cuối cùng thử `umount2()`
+- `usb_copy_to_device()` và `usb_copy_from_device()`:
+  - chỉ chạy được khi driver `usb_bridge` sẵn sàng
 
-Code hiện tại cũng tương thích ngược với format cũ 2 cột:
+### 10.3. USB Storage Manager trong GUI
 
-```text
-username:sha256_hash
-```
+Hộp thoại USB Manager hỗ trợ:
 
-Trong trường hợp đó, role mặc định được coi là `admin`.
+- detect USB đã mount
+- mount phân vùng USB chưa mount
+- unmount
+- liệt kê file/thư mục trong mount point
+- đọc file text/CSV vào `GtkTextView`
+- ghi nội dung text ra file
+- copy file `.txt` hoặc `.csv` từ host lên USB
+- copy file từ USB về host
+- hiển thị log thao tác và bộ đếm read/write
 
-### 10.2. Tài khoản mẫu đang có trong repo
+### 10.4. Một nuance quan trọng
 
-Theo file hiện tại:
+Trong GUI, nút `Mount` kiểm tra `usb_driver_available()` ngay từ đầu. Nghĩa là:
 
-- `admin` / mật khẩu `admin` / role `admin`
-- `student` / mật khẩu `123` / role `viewer`
+- lớp `usb_file.c` có fallback `udisksctl`
+- nhưng nút mount trong GUI hiện vẫn yêu cầu `/dev/usb_bridge` tồn tại trước khi bắt đầu luồng mount
 
-### 10.3. Băm mật khẩu
+Các thao tác detect hoặc đọc/ghi file trên mount point đã có sẵn thì mềm dẻo hơn nhờ fallback ở `usb_file.c`.
 
-Mật khẩu được băm bằng SHA-256 qua OpenSSL và lưu dưới dạng chuỗi hex 64 ký tự.
+## 11. Quản lý tài khoản
 
-Ứng dụng không lưu plaintext password trong `config.txt`.
+GUI admin có dialog quản lý user với các chức năng:
 
-## 11. Audit log
+- xem danh sách tài khoản
+- thêm user
+- xóa user được chọn
+- reset mật khẩu user được chọn
+
+Rule hiện có:
+
+- role chỉ có `viewer` hoặc `admin`
+- không cho xóa chính tài khoản đang đăng nhập
+- reset password là thao tác admin-side, không cần biết mật khẩu cũ
+
+Lưu ý thực tế:
+
+- dialog này không hiển thị lỗi chi tiết cho mọi nhánh thất bại của `add_user()` hoặc `delete_user()`
+- nó thiên về thao tác nhanh hơn là UX đầy đủ cho lỗi
+
+## 12. Đổi mật khẩu và audit log
+
+### 12.1. Đổi mật khẩu
+
+User đang đăng nhập có thể đổi mật khẩu từ GUI. Hệ thống kiểm tra:
+
+- không để trống field
+- mật khẩu mới và xác nhận phải khớp
+- mật khẩu mới phải khác mật khẩu cũ
+- mật khẩu cũ phải đúng
+
+### 12.2. Audit log
 
 File log mặc định:
 
@@ -541,341 +641,274 @@ File log mặc định:
 userspace_app/audit.log
 ```
 
-Mỗi dòng theo dạng:
+Format mỗi dòng:
 
 ```text
 [YYYY-MM-DD HH:MM:SS] [username] action...
 ```
 
-Ví dụ:
+Các thao tác thường được log:
 
-```text
-[2026-04-07 12:34:56] [admin] Added student: CT070302
-```
+- đăng nhập sai
+- thêm/sửa/xóa sinh viên
+- lưu/tải file
+- export CSV/TXT
+- mount/unmount USB
+- read/write/copy USB
+- tạo/xóa user
+- reset password
+- đổi mật khẩu
 
-## 12. Yêu cầu môi trường
+## 13. Yêu cầu môi trường
 
-Đây là project Linux. Nếu đang dùng Windows, nên chạy qua:
-
-- WSL2;
-- máy ảo Linux;
-- hoặc máy Linux thật.
-
-### 12.1. Công cụ cần có
+Đây là project Linux. Để build và chạy đầy đủ, bạn cần:
 
 - `gcc`
 - `make`
 - `pkg-config`
-- `libgtk-3-dev` hoặc gói tương đương
-- `libssl-dev` hoặc gói tương đương
-- Linux kernel headers khớp kernel đang chạy
+- GTK3 development package
+- OpenSSL development package
+- kernel headers đúng với kernel đang chạy
 - quyền `sudo` để nạp/gỡ module và chạy integration test
 
-### 12.2. Gợi ý cài trên Ubuntu/Debian
+### 13.1. Ubuntu/Debian
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential pkg-config libgtk-3-dev libssl-dev linux-headers-$(uname -r)
 ```
 
-### 12.3. Gợi ý cài trên Fedora
+### 13.2. Fedora
 
 ```bash
 sudo dnf install -y gcc make pkg-config gtk3-devel openssl-devel kernel-devel kernel-headers
 ```
 
-## 13. Build dự án
+## 14. Build dự án
 
-### 13.1. Build kernel module
+### 14.1. Build kernel modules
 
 ```bash
 cd kernel_module
 make
 ```
 
-Các target đang có:
+Target đang có trong `kernel_module/Makefile`:
 
-- `make`: build module;
-- `make load`: nạp module, tạo `/dev/string_norm`, chmod `666`;
-- `make unload`: gỡ module và xóa device node;
-- `make status`: xem trạng thái module/device/log;
-- `make clean`: dọn artifact.
+- `make`
+- `make clean`
+- `make load`
+- `make load-usb`
+- `make load-all`
+- `make unload`
+- `make unload-usb`
+- `make unload-all`
+- `make status`
 
-### 13.2. Build GUI userspace
+`make load` tạo và cấp quyền `/dev/string_norm`.
+
+`make load-usb` tạo và cấp quyền `/dev/usb_bridge`.
+
+### 14.2. Build ứng dụng GUI
 
 ```bash
 cd userspace_app
 make
 ```
 
-Binary chính:
+Binary tạo ra:
 
 ```bash
 ./student_manager_gui
 ```
 
-hoặc:
-
-```bash
-make run-gui
-```
-
-### 13.3. Build test
+### 14.3. Build test
 
 ```bash
 cd tests
 make all
 ```
 
-## 14. Quy trình chạy khuyến nghị
+## 15. Quy trình chạy khuyến nghị
 
-Đây là thứ tự nên dùng để chạy project đúng cách:
-
-### Bước 1. Build và nạp driver
+### Bước 1. Build kernel modules
 
 ```bash
 cd kernel_module
 make
-sudo make load
 ```
 
-### Bước 2. Kiểm tra device node
+### Bước 2. Load cả hai driver
 
 ```bash
-ls -l /dev/string_norm
+make load-all
 ```
 
-hoặc:
+### Bước 3. Kiểm tra device node
 
 ```bash
-cd kernel_module
 make status
 ```
 
-### Bước 3. Build GUI
+### Bước 4. Build GUI
 
 ```bash
 cd ../userspace_app
 make
 ```
 
-### Bước 4. Chạy ứng dụng từ đúng thư mục `userspace_app`
+### Bước 5. Chạy GUI từ đúng thư mục `userspace_app`
 
 ```bash
 cd ../userspace_app
 ./student_manager_gui
 ```
 
-Điểm này quan trọng vì code đang mở các file tương đối:
+Điểm này rất quan trọng vì ứng dụng dùng đường dẫn tương đối cho:
 
 - `config.txt`
 - `students.txt`
 - `style.css`
 - `audit.log`
 
-Nếu chạy binary từ thư mục khác, các file tương đối này có thể không được tìm thấy.
+Nếu chạy binary từ thư mục khác, chương trình có thể không tìm thấy dữ liệu hoặc CSS.
 
-## 15. Hướng dẫn sử dụng nhanh
+## 16. Hướng dẫn sử dụng nhanh
 
-### 15.1. Đăng nhập
+### 16.1. Đăng nhập
 
-Đăng nhập bằng tài khoản mẫu:
+Tài khoản mẫu hiện có:
 
 - `admin` / `admin`
-- hoặc `student` / `123`
+- `student` / `123`
 
-### 15.2. Thêm sinh viên
+### 16.2. Thêm sinh viên
 
 Nhập:
 
-- mã sinh viên;
-- họ tên;
-- lớp;
-- ngày sinh `dd/mm/yyyy`;
-- GPA.
+- mã sinh viên
+- họ tên
+- lớp
+- ngày sinh `dd/mm/yyyy`
+- GPA trong khoảng `0.0..4.0`
 
 Sau đó bấm `Thêm`.
 
-### 15.3. Sửa sinh viên
+### 16.3. Sửa sinh viên
 
-Chọn một dòng trong bảng để đổ dữ liệu vào form, sửa các trường cần thiết rồi bấm `Sửa`.
+- chọn một dòng trong bảng để điền form tự động
+- sửa field cần đổi
+- bấm `Sửa`
 
-### 15.4. Xóa sinh viên
+### 16.4. Xóa sinh viên
 
-Chọn dòng hoặc nhập mã sinh viên, sau đó bấm `Xóa` và xác nhận.
+- chọn dòng trong bảng hoặc nhập mã sinh viên
+- bấm `Xóa`
+- xác nhận thao tác
 
-### 15.5. Tìm kiếm
+### 16.5. Lưu và tải file
 
-Nhập từ khóa vào ô tìm kiếm. Code hiện tại tìm theo:
+- nếu để trống ô file, app dùng `students.txt`
+- `Lưu file` ghi snapshot hiện tại xuống file
+- `Tải file` thay thế toàn bộ danh sách đang nằm trong RAM
 
-- `student_code`
-- `raw_name`
-- `normalized_name`
+### 16.6. Export
 
-### 15.6. Lưu và tải file
+- `Xuất Text (.txt)`: xuất file text theo format nội bộ
+- `Xuất Excel (.csv)`: export CSV để mở bằng Excel
 
-- để trống ô file thì app mặc định dùng `students.txt`;
-- nhập đường dẫn file khác nếu muốn save/load file riêng.
+### 16.7. USB Storage Manager
 
-### 15.7. Export
+Trong sidebar có nút `USB Storage Manager`. Tại đây bạn có thể:
 
-- `Xuất Text (.txt)`: lưu danh sách ra file text theo format nội bộ;
-- `Xuất Excel (.csv)`: xuất CSV có BOM để mở Excel dễ hơn.
+- detect USB
+- mount/unmount
+- đọc và ghi file text
+- copy `.txt` và `.csv` giữa host với USB
 
-### 15.8. USB
+## 17. Test
 
-Nhập:
+### 17.1. Theo `tests/Makefile`
 
-- thư mục mount;
-- tên file;
-- nội dung text.
-
-Rồi chọn:
-
-- `Ghi USB`
-- hoặc `Đọc USB`
-
-## 16. Test
-
-### 16.1. Unit test userspace
-
-Các target hiện có trong `tests/Makefile`:
+Các lệnh chính:
 
 ```bash
 cd tests
 make run_mock
 make run_auth
 make run_student
+make run_integration
+make run_usb_bridge
+make run_all
 ```
 
 Ý nghĩa:
 
-- `run_mock`: test logic chuẩn hóa tên với mock driver;
-- `run_auth`: test SHA-256, authenticate, role, add/delete user, đổi mật khẩu;
-- `run_student`: test validate tên, add student, validate GPA, load file strict.
+- `run_mock`: test normalize userspace không cần driver
+- `run_auth`: test hash, login, role, add/delete user, change password
+- `run_student`: test CRUD, validate, sort, load/save, export CSV
+- `run_integration`: test `/dev/string_norm`
+- `run_usb_bridge`: test `/dev/usb_bridge`
+- `run_all`: gọi script tổng hợp
 
-### 16.2. Integration test với driver thật
+### 17.2. Trạng thái kiểm tra tôi đã chạy trong workspace
 
-```bash
-cd tests
-make run_integration
-```
+Tôi đã chạy thực tế 3 unit test userspace:
 
-Test này:
+- `make run_mock`: pass `40/40`
+- `make run_auth`: fail `1` assertion trên tổng `49`
+- `make run_student`: fail `2` assertion trên tổng `78`
 
-- mở `/dev/string_norm`;
-- `write()` chuỗi vào driver;
-- `read()` kết quả chuẩn hóa;
-- so sánh với output mong đợi.
+Các failure này đến từ test expectation không khớp hoàn toàn với behavior hiện tại của code:
 
-Nó cần:
+- `test_auth.c` đang mong giá trị SHA-256 sai cho chuỗi `"password"`
+- `test_student.c` đang kỳ vọng `"   "` là tên invalid ở `is_valid_name()`, trong khi code hiện tại chỉ kiểm tra ký tự, còn việc chặn blank name được làm ở lớp khác
+- `test_student.c` đang kỳ vọng tìm `"an"` ra `2` kết quả, nhưng `search_student()` dùng `strstr()` trên cả `raw_name` lẫn `normalized_name`, nên số match thực tế rộng hơn
 
-- driver đã sẵn sàng;
-- có quyền `sudo`.
+Tôi chưa chạy integration test vì các lệnh đó cần `sudo` và driver thật được load trong máy chạy.
 
-### 16.3. Full test script
+### 17.3. Lưu ý về `run_all_tests.sh`
 
-```bash
-cd tests/integration_tests
-chmod +x run_all_tests.sh
-sudo ./run_all_tests.sh
-```
+Repo có script `tests/integration_tests/run_all_tests.sh`, nhưng script này hiện không khớp hoàn toàn với `tests/Makefile`:
 
-Script sẽ:
+- một số lệnh compile trong script chưa link đủ source userspace
+- vì vậy nên ưu tiên chạy test qua `make` trong `tests/` trước
 
-1. build kernel module;
-2. nạp driver;
-3. compile và chạy mock/auth/student tests;
-4. compile và chạy integration test;
-5. in kernel log liên quan;
-6. cleanup driver.
+## 18. Các hạn chế hiện tại của dự án
 
-## 17. Các điểm cần lưu ý khi chạy thực tế
-
-### 17.1. Driver là phụ thuộc bắt buộc cho các thao tác có chuẩn hóa tên
-
-Theo code hiện tại:
-
-- thêm sinh viên cần driver;
-- sửa tên sinh viên cần driver;
-- load file cần driver;
-- nếu không mở được `/dev/string_norm`, các thao tác đó sẽ lỗi.
-
-### 17.2. Hàm `normalize_name_best_effort(...)` không thật sự fallback
-
-Tên hàm nghe như có fallback, nhưng logic hiện tại trả lỗi ngay khi driver không sẵn sàng.
-
-### 17.3. Load file là thay thế toàn bộ danh sách trong RAM
-
-Khi import thành công:
-
-- danh sách cũ bị thay hoàn toàn;
-- GUI có xác nhận trước nếu đang có dữ liệu.
-
-### 17.4. Tìm kiếm đang là substring search
-
-`search_student(...)` dùng `strstr(...)`, nên:
-
-- không phải tìm kiếm chính xác tuyệt đối;
-- nhập một phần tên hoặc một đoạn mã vẫn có thể match.
-
-### 17.5. GUI dùng đường dẫn tương đối
-
-Nếu chạy sai working directory, app có thể:
-
-- không đọc được `config.txt`;
-- không đọc được `students.txt`;
-- không load được `style.css`;
-- không ghi được `audit.log` đúng chỗ mong muốn.
-
-## 18. Hạn chế hiện tại của dự án
-
-README nên nói rõ các điểm này vì chúng là hành vi thật của code hiện nay:
-
-- validate ngày sinh chưa kiểm tra lịch thật;
-- xử lý tên chưa hỗ trợ Unicode tiếng Việt đầy đủ;
-- dữ liệu sinh viên lưu bằng mảng tĩnh, tối đa 100 bản ghi;
-- user management ở GUI không hiển thị lỗi chi tiết nếu `add_user(...)` thất bại;
-- driver dùng buffer toàn cục dùng chung;
-- project lưu cấu hình và dữ liệu dạng file text đơn giản, chưa có cơ chế transaction hay backup;
-- `userspace_app/student.h` hiện có comment bị lỗi encoding trong file nguồn;
-- repository đang chứa cả artifact build, dễ gây nhiễu nếu dùng như source tree sạch.
+- xử lý tên chưa hỗ trợ Unicode tiếng Việt đầy đủ
+- driver `string_norm` dùng buffer toàn cục dùng chung
+- dữ liệu sinh viên dùng mảng tĩnh tối đa `100` bản ghi
+- validate ngày sinh chỉ ở mức cơ bản
+- import file là strict, sai một dòng là fail cả file
+- search đang là substring search có phân biệt hoa thường
+- GUI phụ thuộc đường dẫn tương đối
+- dialog quản lý tài khoản chưa hiển thị đầy đủ lỗi nghiệp vụ
+- USB copy chỉ chạy được khi `usb_bridge` hoạt động
+- repo hiện chứa cả source và artifact build, không phải cây mã sạch tối giản
 
 ## 19. Khắc phục sự cố nhanh
 
-### Không thêm/sửa/load được vì lỗi driver
-
-Kiểm tra:
-
-```bash
-ls -l /dev/string_norm
-```
-
-Nếu chưa có:
+### Không thấy `/dev/string_norm` hoặc `/dev/usb_bridge`
 
 ```bash
 cd kernel_module
-sudo make load
+make load-all
+make status
 ```
 
-### Không mở được GUI hoặc build lỗi GTK
+### GUI chạy nhưng không có CSS hoặc không đọc được dữ liệu
 
-Kiểm tra đã cài gói phát triển GTK3:
+Hãy chắc chắn bạn chạy từ đúng thư mục:
 
 ```bash
-pkg-config --cflags gtk+-3.0
-pkg-config --libs gtk+-3.0
+cd userspace_app
+./student_manager_gui
 ```
 
-### Không xác thực được tài khoản
+### Không đăng nhập được
 
-Kiểm tra file:
-
-```text
-userspace_app/config.txt
-```
-
-Schema phải là:
+Kiểm tra `userspace_app/config.txt` theo format:
 
 ```text
 username:sha256_hash:role
@@ -885,21 +918,33 @@ username:sha256_hash:role
 
 Nguyên nhân thường gặp:
 
-- sai delimiter;
-- sai số cột;
-- mã sinh viên không hợp lệ;
-- tên chứa ký tự không hợp lệ;
-- lớp không hợp lệ;
-- ngày sinh sai format;
-- GPA ngoài khoảng `0.0..4.0`;
-- mã sinh viên bị trùng;
-- driver không sẵn sàng để chuẩn hóa tên.
+- sai delimiter
+- sai số cột
+- tên chứa ký tự không hợp lệ
+- mã sinh viên hoặc lớp chứa ký tự cấm
+- DOB sai format
+- GPA ngoài `0.0..4.0`
+- có dòng trùng mã sinh viên
 
-## 20. Trạng thái kiểm tra trong môi trường hiện tại
+### USB Manager mount không chạy
 
-Tôi đã rà mã nguồn để viết lại README này theo hiện trạng thật của project.
+Kiểm tra:
 
-Riêng việc build/test trực tiếp trong môi trường hiện tại chưa thực hiện được vì shell đang báo không có `make` trong PATH. Do đó:
+- đã load `usb_bridge`
+- có `/dev/usb_bridge`
+- mount point trong `/tmp` tạo được
+- hệ thống có `udisksctl` nếu cần fallback
 
-- nội dung README về build/test được đối chiếu từ `Makefile`, script test và source code;
-- nếu bạn chạy trên Linux hoặc WSL có cài đủ toolchain, các lệnh trong phần trên là quy trình đúng theo repository hiện tại.
+## 20. Kết luận
+
+Đây là một project C/Linux khá đầy đủ ở mức đồ án hệ thống:
+
+- có kernel module thật
+- có GUI thật
+- có phân quyền
+- có file-based persistence
+- có test
+- có audit
+- có luồng USB riêng
+
+Điểm mạnh của repo là ghép được nhiều lớp từ kernel đến desktop app trong cùng một bài toán. Điểm cần lưu ý là một số test và script phụ hiện chưa đồng bộ hoàn toàn với behavior mới của mã nguồn, nên khi dùng làm tài liệu hoặc demo nên bám vào source và `Makefile` hiện tại.

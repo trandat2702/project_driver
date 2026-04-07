@@ -1,8 +1,8 @@
 CC     = gcc
-CFLAGS = -Wall -Wextra -g -Wno-deprecated-declarations
+CFLAGS = -Wall -Wextra -g -Wno-deprecated-declarations -I../kernel_module
 LIBS   = -lssl -lcrypto
 GUI_TARGET = student_manager_gui
-GUI_SRCS   = gui_app.c auth.c student.c usb_file.c audit.c
+GUI_SRCS   = gui_app.c auth.c student.c usb_file.c usb_driver_client.c audit.c
 GTK_CFLAGS = $(shell pkg-config --cflags gtk+-3.0)
 GTK_LIBS   = $(shell pkg-config --libs gtk+-3.0)
 

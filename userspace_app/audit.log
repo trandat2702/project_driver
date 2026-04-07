@@ -1,0 +1,37 @@
+[2026-04-08 00:05:44] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 00:05:58] [admin] USB Write: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 00:07:12] [admin] Loaded data from file: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 00:09:36] [admin] Loaded data from file: /home/dat/project_driver/userspace_app/students.txt
+[2026-04-08 00:09:42] [admin] Deleted student: CT070311123123
+[2026-04-08 00:10:17] [admin] Saved data to file: /home/dat/project_driver/userspace_app/students.txt
+[2026-04-08 00:10:18] [admin] Loaded data from file: /home/dat/project_driver/userspace_app/students.txt
+[2026-04-08 00:24:23] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 00:24:44] [admin] Saved data to file: /home/dat/project_driver/userspace_app/students.txt
+[2026-04-08 00:24:46] [admin] Loaded data from file: /home/dat/project_driver/userspace_app/students.txt
+[2026-04-08 00:25:06] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 00:25:16] [admin] USB Copy To: students.txt
+[2026-04-08 00:25:23] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 00:25:24] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 00:25:32] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 00:25:34] [admin] USB Read: /run/media/dat/VTOYEFI/students.txt
+[2026-04-08 00:25:42] [admin] USB Read: /run/media/dat/VTOYEFI/danhsachsv.txt
+[2026-04-08 00:26:22] [admin] USB Copy From: danhsachsv.txt
+[2026-04-08 00:26:33] [admin] Loaded data from file: /home/dat/project_driver/userspace_app/students.txt
+[2026-04-08 00:48:17] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 00:53:27] [admin] Unmounted USB at /run/media/dat/Ventoy via system
+[2026-04-08 00:55:03] [admin] Reset password for user: admin
+[2026-04-08 01:19:07] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 01:19:33] [admin] Unmounted USB at /run/media/dat/Ventoy via system
+[2026-04-08 01:23:27] [admin] Failed login attempt
+[2026-04-08 01:24:51] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 01:25:14] [admin] Unmounted USB at /run/media/dat/Ventoy via system
+[2026-04-08 01:27:00] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 01:31:41] [admin] Failed login attempt
+[2026-04-08 01:32:13] [admin] Unmounted USB at /run/media/dat/Ventoy via system
+[2026-04-08 01:32:44] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 01:33:48] [admin] Unmounted USB at /run/media/dat/Ventoy via system
+[2026-04-08 01:40:34] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 01:53:57] [admin] Unmounted USB at /run/media/dat/VTOYEFI via system
+[2026-04-08 01:58:02] [admin] Mounted USB /dev/sdb2 at /tmp/usb_bridge_sdb2 via driver
+[2026-04-08 02:09:21] [admin] Unmounted USB at /tmp/usb_bridge_sdb2 via driver
+[2026-04-08 02:09:25] [admin] Mounted USB /dev/sdb2 at /tmp/usb_bridge_sdb2

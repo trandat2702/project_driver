@@ -1,1 +1,1 @@
-savedcmd_/home/dat/linux-driver-project/kernel_module/modules.order := {   echo /home/dat/linux-driver-project/kernel_module/string_norm.o; :; } > /home/dat/linux-driver-project/kernel_module/modules.order
+savedcmd_/home/dat/project_driver/kernel_module/modules.order := {   echo /home/dat/project_driver/kernel_module/string_norm.o;   echo /home/dat/project_driver/kernel_module/usb_bridge.o; :; } > /home/dat/project_driver/kernel_module/modules.order
